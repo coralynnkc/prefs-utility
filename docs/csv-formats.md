@@ -1,7 +1,8 @@
 # Tabroom CSV formats (observed)
 
-Judge names throughout are pseudonyms. Every case below preserves the exact
-shape of a real one — the substitutions are consistent, so the reasoning holds.
+Judge, school and tournament names throughout are pseudonyms. Every case below
+preserves the exact shape of a real one — the substitutions are consistent, so the
+reasoning holds.
 
 Derived empirically from two real exports (kept locally in `data/`, gitignored).
 Redacted fixtures reproducing every quirk below live in `samples/`.
@@ -107,12 +108,11 @@ the same human:
 
 | | pref sheet `School` | judgelist `Institution` |
 |---|---|---|
-| Robin Okafor | Marlborough School | CSU Long Beach |
+| Robin Okafor | Ridgeview School | State University |
 
-The pref sheet's vocabulary is LA-area high schools (Marlborough, Immaculate
-Heart, Harvard-Westlake, plus `Hire` for independents); the judgelist's is
-universities (Michigan, Emory, Wake Forest, Kansas). Same circuit, same judges,
-orthogonal vocabularies.
+The pref sheet's vocabulary is local high schools (Ridgeview, Northgate and
+their neighbours, plus `Hire` for independents); the judgelist's is universities
+(State, Coastal, Metro). Same circuit, same judges, orthogonal vocabularies.
 
 **So never use school to confirm or reject a name match.** Using it to reject
 would have discarded the one confirmed true match in the data. Show it to help a
@@ -156,5 +156,5 @@ the alias map durable and exportable early.
   Use a real CSV parser.
 - Both files end with a trailing blank line. Skip empty rows.
 - The pref export's filename encodes team and tournament with spaces stripped
-  (`PrefsforMountainViewAWatLoyolaInvitational.csv`) — usable as a default
+  (`PrefsforRidgeviewAWatNorthgateInvitational.csv`) — usable as a default
   autosave key, but not reliably parseable back into its parts.
