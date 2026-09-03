@@ -22,9 +22,10 @@ that is *shorter than the row*, which is the specific defect here.
 
 ---
 
-## Phase 1 — Pref editor
+## Phase 1 — Pref editor — **done**
 
 Single `index.html`. PapaParse for CSV, SortableJS for drag, no build step.
+Covered by `tests/core.test.mjs`; see [Testing](#testing).
 
 **Import**
 - Parse with header detection; if field count > header count, show the surplus
@@ -52,6 +53,23 @@ rank column may differ from the imported file. `Blob` + `<a download>`.
 **Persistence** — `localStorage`, keys namespaced `prefsutil:`, autosaved per
 tournament. See Hosting for why this is weaker than it sounds.
 
+**What shipped, and what it decided.** Two things the sketch above left open
+turned out to need an answer:
+
+- *Where a split judge lands.* Splitting out of a tie group takes the free rank
+  nearest the tier you came from — nudging up off `10` in a `1, 10, 80` sheet
+  gives 9, not 2. The obvious "first free number in the interval" rule flings
+  judges across the big gaps the real data is full of.
+- *What happens when there is no free number.* Splitting between `10` and `11`
+  has to renumber somebody. The editor shifts the shortest possible run — the
+  contiguous block below the gap, stopping at the first natural gap — and says
+  out loud how many judges it moved, because each one becomes a line in the
+  Phase 2 diff.
+
+`Rating` needed a fourth, display-only role in the mapper. The plan asked for
+the rating to render greyed and never editable, and there is no way to render it
+as anything but `col 7` without knowing which column it is. It is never written.
+
 ---
 
 ## Phase 2 — Diff script
@@ -63,6 +81,12 @@ pandas buys nothing here.
 Keys on normalized `first last`. Reports rank changes plus judges added or
 dropped between the two files, sorted by new rank, as a checklist to work down
 in Tabroom.
+
+Also reads a single `Name` column, since the Phase 1 mapper can produce one. A
+full name is never split back into first/last — guessing where a surname starts
+is the same forbidden inference as nickname expansion. Diffing a `Name` file
+against a `First`/`Last` file is refused outright rather than reported as every
+judge being dropped and re-added.
 
 ---
 
@@ -114,10 +138,39 @@ nickname expansion — it would merge `Sam`/`Samir` on a guess.
 
 ## Build order
 
-1. Import with column mapping + tier-aware edit + export
-2. `tools/diff_prefs.py`
+1. ~~Import with column mapping + tier-aware edit + export~~ **done**
+2. ~~`tools/diff_prefs.py`~~ **done**
 3. Rating store + pairwise comparison UI + JSON export/import
 4. Roster upload → first-pass ranking, wired into 1
+
+---
+
+## Testing
+
+```
+tests/run.sh          # everything CI runs
+```
+
+CI is `.github/workflows/ci.yml`, on every push to `main` and every PR.
+
+The app is one file with no build step, so there is no module for a test to
+import. Instead `index.html` marks its pure region with `core:start` /
+`core:end`; `tests/harness.mjs` slices exactly that text out and imports it as a
+data-URL module. **The tests run the shipping code, not a copy of it.** A test
+asserts the region stays free of `document` and `localStorage`, so the seam
+cannot rot quietly.
+
+- `tests/core.test.mjs` — column guessing on the short header, tier algebra
+  (ties, gaps, the shift path and its bounds), and export fidelity: an untouched
+  sheet must re-export byte for byte, and a moved judge must change one cell.
+- `tests/test_diff_prefs.py` — stdlib `unittest` over the CLI, checking mainly
+  that the checklist stays short.
+- `tests/vendor.sh` downloads PapaParse and SortableJS from the URLs it reads
+  *out of `index.html`*, so a stale CDN pin fails CI rather than someone's
+  browser.
+
+A second CI job fails the build if any `.csv` outside `samples/` is committed —
+see Hosting for why that matters more here than it usually would.
 
 ---
 

@@ -25,7 +25,9 @@ pref sheets silently.
    tournament pool. Carry it through unchanged; never recompute or interpolate it.
 4. **Preserve unknown columns verbatim.** Round-trip every field the importer did
    not understand, in its original position. Export is only allowed to differ
-   from import in the rank column.
+   from import in the rank column — an untouched sheet must re-export byte for
+   byte, and an unmoved judge's rank cell is written back as its original
+   string, not a re-serialised number. Row order is part of this.
 5. **Use a real CSV parser.** The observed files happen to have no quoted fields;
    a school name containing a comma would break `split(',')`.
 6. **No silent fuzzy name matching.** There is no judge ID in any export. Exact
@@ -37,10 +39,30 @@ pref sheets silently.
    they study. They disagree for the same person (Robin Okafor: Ridgeview School
    vs State University). Display it as context for a human; never decide on it.
 
+## Testing
+
+`tests/run.sh` runs everything CI runs. Run it before pushing.
+
+`index.html` has no module to import, so its pure logic is fenced between
+`/* ==== core:start` and `/* ==== core:end` banners and `tests/harness.mjs`
+slices that text out and imports it as a data-URL module — the tests exercise
+the shipping code, not a copy. Two rules follow:
+
+- **Nothing between the markers may touch `document`, `localStorage`, `window`
+  or timers.** A test asserts this; put new DOM code below `core:end`.
+- **Adding an exported-from-core function means adding it to `EXPORTS` in
+  `tests/harness.mjs`.** Renaming one without that fails loudly, which is
+  intended.
+
+New fixtures go in `samples/` — `.gitignore` blocks `*.csv` everywhere else, so
+a fixture under `tests/` would silently never be committed.
+
 ## Conventions
 
 - Vanilla JS, ES modules, no transpile. Libraries via CDN `<script>` only when
-  they earn their place (PapaParse for CSV, SortableJS for drag).
+  they earn their place (PapaParse for CSV, SortableJS for drag). The app is one
+  inline `type="module"` script: `file://` blocks imports between local files,
+  and it has to open from disk as well as from Pages.
 - `localStorage` keys are namespaced `prefsutil:` — GitHub Pages puts every
   `<user>.github.io` project on one shared origin.
 - Python tooling in `tools/` is stdlib-only and CLI-shaped, one file per job.

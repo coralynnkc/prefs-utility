@@ -7,6 +7,9 @@ data/
 # Local rating DB backups exported from the app
 *.judgedb.json
 
+# CDN libraries the test suite downloads (tests/vendor.sh)
+vendor/
+
 .DS_Store
 __pycache__/
 *.pyc
