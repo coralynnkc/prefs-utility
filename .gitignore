@@ -1,0 +1,14 @@
+# Real Tabroom exports — pref sheets are competitively sensitive.
+# Keep them local; commit only the redacted fixtures in samples/.
+data/
+*.csv
+!samples/*.csv
+
+# Local rating DB backups exported from the app
+*.judgedb.json
+
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+venv/
