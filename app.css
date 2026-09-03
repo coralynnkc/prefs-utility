@@ -10,60 +10,80 @@
 
 :root {
   color-scheme: light dark;
-  --bg: #fbfbfa;
+  --bg: #f6f6f4;
   --panel: #fff;
+  --panel-2: #faf9f7;
   --ink: #1b1b1a;
   --muted: #6b6b68;
-  --line: #dedcd7;
+  --faint: #9b9a95;
+  --line: #e3e1db;
+  --line-strong: #cbc8c0;
   --accent: #2f6f4f;
   --accent-soft: #e6f0e9;
   --warn: #8a5a00;
   --warn-soft: #fdf3df;
-  --moved: #8a3a00;
-  --moved-soft: #fdeee2;
-  --radius: 8px;
+  --moved: #9c4512;
+  --moved-soft: #fceee4;
+  --radius: 10px;
+  --shadow: 0 1px 1px rgba(24, 24, 20, .04), 0 2px 10px rgba(24, 24, 20, .05);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17181a; --panel: #1f2124; --ink: #e8e6e2; --muted: #9a9893;
-    --line: #34373b; --accent: #7fc39c; --accent-soft: #1e2f27;
+    --bg: #16171a; --panel: #1e2023; --panel-2: #24262a;
+    --ink: #e8e6e2; --muted: #9a9893; --faint: #74736f;
+    --line: #32353a; --line-strong: #464a50;
+    --accent: #7fc39c; --accent-soft: #1e2f27;
     --warn: #e3b464; --warn-soft: #302716;
     --moved: #f0a06a; --moved-soft: #33221a;
+    --shadow: 0 1px 1px rgba(0, 0, 0, .3), 0 2px 12px rgba(0, 0, 0, .25);
   }
 }
 * { box-sizing: border-box; }
 body {
   font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--bg); color: var(--ink);
-  margin: 0; padding: 0 1rem 6rem;
+  margin: 0; padding: 0 1.2rem 6rem;
+  -webkit-font-smoothing: antialiased;
 }
-.wrap { max-width: 62rem; margin: 0 auto; }
-h1 { font-size: 1.3rem; margin: 1.6rem 0 .2rem; }
+.wrap { max-width: 66rem; margin: 0 auto; }
+h1 { font-size: 1.35rem; letter-spacing: -.01em; margin: 1.8rem 0 .25rem; }
 h2 { font-size: 1.05rem; margin: 1.8rem 0 .5rem; }
 p.sub { color: var(--muted); margin: 0 0 1.4rem; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .87em; }
+code {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  border-radius: 4px; padding: .05em .3em;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 button {
-  font: inherit; padding: .4rem .8rem; border-radius: 6px;
-  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-  cursor: pointer;
+  font: inherit; padding: .38rem .8rem; border-radius: 7px;
+  border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink);
+  cursor: pointer; transition: background .12s, border-color .12s;
 }
-button:hover:not(:disabled) { border-color: var(--muted); }
-button:disabled { opacity: .45; cursor: default; }
+button:hover:not(:disabled) { background: var(--panel-2); border-color: var(--muted); }
+button:disabled { opacity: .4; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-@media (prefers-color-scheme: dark) { button.primary { color: #10241a; } }
-input[type=search], input[type=number], select {
-  font: inherit; padding: .35rem .5rem; border-radius: 6px;
-  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+button.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, black); border-color: var(--accent);
 }
+@media (prefers-color-scheme: dark) {
+  button.primary { color: #10241a; }
+  button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, white); }
+}
+input[type=search], input[type=number], select {
+  font: inherit; padding: .35rem .5rem; border-radius: 7px;
+  border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink);
+}
+input[type=search] { min-width: 11rem; }
 
 .panel {
   background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 1rem 1.1rem;
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow);
 }
 .note {
   border-left: 3px solid var(--warn); background: var(--warn-soft);
-  color: var(--ink); padding: .7rem .9rem; border-radius: 0 6px 6px 0;
+  color: var(--ink); padding: .7rem .9rem; border-radius: 0 7px 7px 0;
   margin: 1rem 0; font-size: .92rem;
 }
 .note.info { border-left-color: var(--accent); background: var(--accent-soft); }
@@ -72,15 +92,15 @@ input[type=search], input[type=number], select {
 
 /* ---- import ---------------------------------------------------------- */
 #drop {
-  border: 2px dashed var(--line); border-radius: var(--radius);
-  padding: 2.4rem 1rem; text-align: center; color: var(--muted);
-  background: var(--panel);
+  border: 2px dashed var(--line-strong); border-radius: var(--radius);
+  padding: 2.6rem 1rem; text-align: center; color: var(--muted);
+  background: var(--panel); transition: border-color .12s, background .12s;
 }
 #drop.over { border-color: var(--accent); background: var(--accent-soft); }
 #resume-list { list-style: none; padding: 0; margin: .6rem 0 0; }
 #resume-list li {
   display: flex; gap: .6rem; align-items: center; justify-content: space-between;
-  padding: .45rem 0; border-top: 1px solid var(--line);
+  padding: .5rem 0; border-top: 1px solid var(--line);
 }
 
 /* ---- mapper ---------------------------------------------------------- */
@@ -89,6 +109,7 @@ table.map th, table.map td {
   text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
+table.map tr:last-child td { border-bottom: 0; }
 table.map th { color: var(--muted); font-weight: 600; font-size: .82rem;
                text-transform: uppercase; letter-spacing: .03em; }
 td.samples { color: var(--muted); }
@@ -96,59 +117,131 @@ td.samples span { display: inline-block; margin-right: .55rem; }
 .unnamed { color: var(--warn); font-style: italic; }
 .shifted-name { color: var(--muted); text-decoration: line-through; }
 
-/* ---- editor ---------------------------------------------------------- */
+/* ---- editor ----------------------------------------------------------
+
+   The board is one dense table-shaped list, not a stack of cards: a narrow
+   rank gutter on the left, and every judge at that rank on a single tight
+   row beside it. Tiers are only ever a few pixels apart, which is what makes
+   dragging one judge onto another tier a short, aimable movement instead of
+   a scroll across a screenful of card chrome.
+*/
 #bar {
-  position: sticky; top: 0; z-index: 20; background: var(--bg);
-  padding: .7rem 0; border-bottom: 1px solid var(--line);
-  display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  padding: .65rem 0; margin-bottom: .9rem; border-bottom: 1px solid var(--line);
+  display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
 }
-#bar .grow { flex: 1 1 8rem; }
-#counts { color: var(--muted); font-size: .9rem; }
+#bar .grow { flex: 1 1 4rem; }
+#filename { font-size: .92rem; }
+#counts { color: var(--muted); font-size: .9rem; white-space: nowrap; }
 #counts b { color: var(--moved); }
 
-#board { margin-top: 1rem; }
-.tier {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius); overflow: hidden;
+.section-cap {
+  display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap;
+  font-weight: 600; margin: 0 0 .45rem;
 }
-.tier-head {
-  display: flex; align-items: center; gap: .55rem;
-  padding: .35rem .6rem; border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--ink) 3%, var(--panel));
-}
-.tier-head label { color: var(--muted); font-size: .8rem; text-transform: uppercase;
-                   letter-spacing: .04em; }
-.tier-rank { width: 5rem; }
-.tier-count { color: var(--muted); font-size: .85rem; margin-left: auto; }
+.cap-note { font-weight: 400; color: var(--muted); font-size: .88rem; }
 
-ul.judges { list-style: none; margin: 0; padding: .25rem; min-height: 1.9rem; }
+.box, #board {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: hidden;
+}
+#board { margin-top: 1rem; }
+
+.tier { display: grid; grid-template-columns: 4.25rem minmax(0, 1fr); }
+.tier + .tier, .gap + .tier { border-top: 1px solid var(--line); }
+#board > .gap:first-child + .tier { border-top: 0; }
+
+.tier-head {
+  display: flex; flex-direction: column; align-items: center; gap: .05rem;
+  padding: .22rem .3rem; background: var(--panel-2);
+  border-right: 1px solid var(--line);
+}
+input.tier-rank {
+  width: 100%; padding: .08rem .2rem; text-align: center;
+  font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums;
+  border-color: transparent; background: transparent; border-radius: 6px;
+  appearance: textfield;
+}
+input.tier-rank::-webkit-outer-spin-button,
+input.tier-rank::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.tier:hover input.tier-rank { border-color: var(--line-strong); background: var(--panel); }
+input.tier-rank:focus { border-color: var(--accent); background: var(--panel); }
+.tier-count { font-size: .7rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+.gutter-label { color: var(--warn); font-weight: 600; }
+.unranked-tier .tier-head { background: var(--warn-soft); }
+
+ul.judges { list-style: none; margin: 0; padding: .12rem; min-height: 1.85rem; }
 li.judge {
-  display: flex; gap: .55rem; align-items: baseline; flex-wrap: wrap;
-  padding: .35rem .5rem; border-radius: 6px; cursor: grab;
+  display: flex; align-items: center; gap: .5rem; min-width: 0;
+  padding: .18rem .45rem; border-radius: 6px; cursor: grab;
+  line-height: 1.4;
 }
-li.judge:focus-visible, li.judge:focus {
-  outline: 2px solid var(--accent); outline-offset: -2px;
+li.judge:active { cursor: grabbing; }
+li.judge::before {
+  content: "\283F"; flex: 0 0 auto; color: transparent;
+  font-size: .8rem; line-height: 1;
 }
+li.judge:hover::before { color: var(--faint); }
 li.judge:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 li.judge.moved { background: var(--moved-soft); }
-.jname { font-weight: 600; }
-.jschool { color: var(--muted); font-size: .9rem; }
-.chips { display: flex; gap: .4rem; flex-wrap: wrap; margin-left: auto; }
+li.judge:focus-visible, li.judge:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.jname { font-weight: 600; white-space: nowrap; }
+.jschool {
+  color: var(--muted); font-size: .88rem;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.meta { margin-left: auto; display: flex; align-items: center; gap: .35rem; flex: 0 0 auto; }
 .chip {
-  color: var(--muted); font-size: .78rem;
-  border: 1px solid var(--line); border-radius: 999px; padding: 0 .5rem;
+  color: var(--muted); font-size: .74rem; white-space: nowrap;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border-radius: 999px; padding: .05rem .45rem;
 }
 .chip.readonly { font-style: italic; }
 .badge {
-  font-size: .78rem; color: var(--moved); border: 1px solid var(--moved);
-  border-radius: 999px; padding: 0 .5rem; cursor: pointer;
+  font-size: .74rem; color: var(--moved); white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--moved) 45%, transparent);
+  border-radius: 999px; padding: .05rem .45rem; cursor: pointer;
 }
+.badge:hover { background: color-mix(in srgb, var(--moved) 12%, transparent); }
 
-.gap { height: 10px; margin: 2px 0; border-radius: 5px; }
-#board.dragging .gap { height: 24px; border: 1px dashed var(--line); }
-#board.dragging .gap:hover { border-color: var(--accent); background: var(--accent-soft); }
-.sortable-ghost { opacity: .35; }
+/* ---- drag ----
+
+   Resting gaps are a hairline of dead space. They only become drop targets --
+   tall, labelled and obvious -- while something is actually being dragged,
+   because that is the one moment they mean anything.
+*/
+.gap { height: 4px; }
+#board.dragging .gap {
+  min-height: 28px; margin: 3px .4rem; display: flex;
+  align-items: center; justify-content: center;
+  border: 1px dashed var(--line-strong); border-radius: 7px;
+}
+#board.dragging .gap::after {
+  content: "drop here for a rank of its own";
+  font-size: .72rem; color: var(--faint);
+}
+/* Sortable moves the real element into whatever container the pointer is over,
+   so "this gap holds the item" is the live hover state. */
+#board.dragging .gap:has(li.judge) {
+  border-style: solid; border-color: var(--accent); background: var(--accent-soft);
+}
+#board.dragging .gap:has(li.judge)::after { content: none; }
+#board.dragging ul.judges:has(.drag-ghost) { background: var(--accent-soft); }
+
+.drag-ghost { background: var(--accent-soft) !important; }
+.drag-ghost > * { visibility: hidden; }
+.drag-ghost::before { visibility: hidden; }
+.drag-chosen { cursor: grabbing; }
+.drag-fallback {
+  list-style: none; opacity: 1 !important; cursor: grabbing;
+  background: var(--panel) !important;
+  border: 1px solid var(--accent); border-radius: 7px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
+}
+.drag-fallback::before { color: var(--faint) !important; }
 
 #unranked { margin-top: 1.4rem; }
-#unranked .tier-head { background: var(--warn-soft); }
 .filtered-out { display: none; }

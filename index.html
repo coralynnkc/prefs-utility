@@ -99,9 +99,10 @@
   <div id="save-note" class="note hide"></div>
 
   <p class="sub" style="margin:.9rem 0 0">
-    Drag a judge onto another tier to join it, or into a gap between tiers to
-    split off a new one. Keyboard: <code>&uarr;</code>/<code>&darr;</code> joins the tier
-    above or below, <code>&#8679;&uarr;</code>/<code>&#8679;&darr;</code> splits into a new tier.
+    Drag a judge onto another row to share its rank, or onto one of the dashed
+    lines that open up between rows to give them a rank of their own. Keyboard:
+    <code>&uarr;</code>/<code>&darr;</code> joins the tier above or below,
+    <code>&#8679;&uarr;</code>/<code>&#8679;&darr;</code> splits into a new tier.
     Untouched tiers keep their original rank, gaps and all.
   </p>
   <p class="sub hide" id="filter-note" style="margin:.5rem 0 0">
@@ -669,42 +670,83 @@ function openEditor() {
   render();
 }
 
-function judgeHtml(j, extras) {
-  const m = S.map;
+const schoolOf = j => (S.map.school !== null ? j.fields[S.map.school].trim() : "");
+
+/**
+ * A judge row's contents, without the <li> around them.
+ *
+ * Kept separate from judgeHtml so a drop can repaint the one row that changed
+ * (see patchRow) instead of rebuilding the board -- rebuilding tears down every
+ * Sortable instance mid-gesture, which is what made drags feel like they
+ * stuttered on landing.
+ */
+function judgeInner(j, extras) {
   const moved = j.rank !== j.origRank;
-  const school = m.school !== null ? j.fields[m.school].trim() : "";
-  const rating = m.rating !== null ? j.fields[m.rating].trim() : "";
+  const rating = S.map.rating !== null ? j.fields[S.map.rating].trim() : "";
+  const school = schoolOf(j);
   const chips = extras
     .filter(c => j.fields[c.i].trim() !== "")
     .map(c => `<span class="chip">${esc(c.label)} ${esc(j.fields[c.i].trim())}</span>`)
     .join("");
   const was = j.origRank === null ? "unranked" : j.origRank;
   const name = judgeName(j);
-  return `<li class="judge${moved ? " moved" : ""}" data-id="${j.i}" tabindex="0"
-              data-name="${esc(name.toLowerCase())}"
-              data-school="${esc(school.toLowerCase())}">
-    <span class="jname">${name ? esc(name) : "<i>(unnamed)</i>"}</span>
+  return `<span class="jname">${name ? esc(name) : "<i>(unnamed)</i>"}</span>
     ${school ? `<span class="jschool">${esc(school)}</span>` : ""}
     ${moved ? `<span class="badge" data-revert="${j.i}" title="Put back">was ${esc(was)} &#8634;</span>` : ""}
-    <span class="chips">
+    <span class="meta">
       ${rating ? `<span class="chip readonly" title="Tabroom-computed percentile; read-only">rating ${esc(rating)}</span>` : ""}
       ${chips}
-    </span>
-  </li>`;
+    </span>`;
 }
 
+function judgeHtml(j, extras) {
+  const moved = j.rank !== j.origRank;
+  return `<li class="judge${moved ? " moved" : ""}" data-id="${j.i}" tabindex="0"
+              data-name="${esc(judgeName(j).toLowerCase())}"
+              data-school="${esc(schoolOf(j).toLowerCase())}">${judgeInner(j, extras)}</li>`;
+}
+
+/** Repaint one already-placed row in situ, leaving its <li> element alive. */
+function patchRow(li, j, extras) {
+  li.classList.toggle("moved", j.rank !== j.origRank);
+  li.innerHTML = judgeInner(j, extras || extraCols());
+}
+
+/** Refresh the "x3 share this rank" hint in a tier's gutter. */
+function refreshTier(ul) {
+  const sec = ul.closest(".tier");
+  const el = sec && sec.querySelector(".tier-count");
+  const n = ul.children.length;
+  if (!el) return;
+  el.innerHTML = n > 1 ? "&times;" + n : "";
+  el.title = n === 1 ? "" : `${n} judges share this rank`;
+}
+
+function updateCounts() {
+  const moved = movedCount();
+  // Any edit is an implicit answer to the restore prompt, so retire it and let
+  // autosave resume.
+  if (moved > 0) $("#restore-prompt").classList.add("hide");
+  $("#counts").innerHTML = `${S.judges.length} judges &middot; ` +
+    (moved ? `<b>${moved} moved</b>` : "none moved");
+  $("#revert-all").disabled = moved === 0;
+}
+
+/** Full rebuild of the board. Only needed when the set of tiers changes. */
 function render() {
   const { ranked, unranked } = tiers();
   const extras = extraCols();
+  const scrollY = window.scrollY;
 
   let html = `<div class="gap" data-gap="0"></div>`;
   ranked.forEach((t, i) => {
+    const n = t.judges.length;
     html += `<section class="tier">
       <div class="tier-head">
-        <label for="tr${i}">Rank</label>
-        <input class="tier-rank" id="tr${i}" type="number" min="1" step="1"
+        <input class="tier-rank" type="number" min="1" step="1" aria-label="Rank"
                value="${t.rank}" data-rank="${t.rank}">
-        <span class="tier-count">${t.judges.length} judge${t.judges.length === 1 ? "" : "s"}</span>
+        <span class="tier-count"${n > 1 ? ` title="${n} judges share this rank"` : ""}>${
+          n > 1 ? "&times;" + n : ""}</span>
       </div>
       <ul class="judges" data-rank="${t.rank}">${t.judges.map(j => judgeHtml(j, extras)).join("")}</ul>
     </section>
@@ -714,30 +756,29 @@ function render() {
 
   const un = $("#unranked");
   un.classList.toggle("hide", unranked.length === 0);
-  un.innerHTML = unranked.length ? `<section class="tier">
-      <div class="tier-head">
-        <label>Unranked</label>
-        <span class="tier-count">${unranked.length} judge${unranked.length === 1 ? "" : "s"}
-          with no rank in the imported file</span>
-      </div>
-      <ul class="judges" data-rank="none">${unranked.map(j => judgeHtml(j, extras)).join("")}</ul>
-    </section>` : "";
+  un.innerHTML = unranked.length ? `
+    <div class="section-cap">Unranked
+      <span class="cap-note">${unranked.length} judge${unranked.length === 1 ? "" : "s"}
+        with no rank in the imported file</span>
+    </div>
+    <div class="box">
+      <section class="tier unranked-tier">
+        <div class="tier-head"><span class="gutter-label">&mdash;</span></div>
+        <ul class="judges" data-rank="none">${unranked.map(j => judgeHtml(j, extras)).join("")}</ul>
+      </section>
+    </div>` : "";
 
   wireDrag();
   applyFilter();
-
-  const moved = movedCount();
-  // Any edit is an implicit answer to the restore prompt, so retire it and let
-  // autosave resume.
-  if (moved > 0) $("#restore-prompt").classList.add("hide");
-  $("#counts").innerHTML = `${S.judges.length} judges &middot; ` +
-    (moved ? `<b>${moved} moved</b>` : "none moved");
-  $("#revert-all").disabled = moved === 0;
+  updateCounts();
 
   if (focusedId !== null) {
     const el = document.querySelector(`li.judge[data-id="${focusedId}"]`);
     if (el) el.focus({ preventScroll: true });
   }
+  // A rebuild can change the page height under the reader; keep them where
+  // they were rather than letting the viewport jump after a drop.
+  if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
   autosave();
 }
 
@@ -748,9 +789,29 @@ function wireDrag() {
   sortables = [];
   const opts = {
     group: "judges",
-    animation: 120,
+    animation: 130,
+    easing: "cubic-bezier(.2,.7,.3,1)",
     disabled: $("#filter").value.trim() !== "",
-    emptyInsertThreshold: 14,
+    emptyInsertThreshold: 10,
+    swapThreshold: 0.7,
+    // Drag the element ourselves rather than handing the browser an HTML5 drag
+    // image: the native one lags the pointer, and it would be clipped anyway by
+    // the board's `overflow: hidden`. fallbackOnBody lifts the clone clear of it.
+    forceFallback: true,
+    fallbackOnBody: true,
+    fallbackTolerance: 4,
+    fallbackClass: "drag-fallback",
+    ghostClass: "drag-ghost",
+    chosenClass: "drag-chosen",
+    // On touch a press has to settle before it counts as a drag, or the list
+    // can't be scrolled. A mouse gets no delay.
+    delay: 130,
+    delayOnTouchOnly: true,
+    filter: ".badge",          // the revert badge is a button, not a grip
+    preventOnFilter: false,
+    scroll: true,
+    scrollSensitivity: 90,
+    scrollSpeed: 14,
     onStart: () => $("#board").classList.add("dragging"),
     onEnd: () => $("#board").classList.remove("dragging"),
   };
@@ -763,17 +824,36 @@ function wireDrag() {
       onAdd: evt => {
         const j = byId(evt.item.dataset.id);
         const target = evt.to.dataset.rank;
-        queue(() => { j.rank = target === "none" ? null : Number(target); noteShift(0); });
+        j.rank = target === "none" ? null : Number(target);
+        queue(() => {
+          noteShift(0);
+          // Sortable has already put the row where it belongs. Rebuild only
+          // when the *set of tiers* changed -- an emptied tier has to stop
+          // existing, and the unranked section appears and disappears with its
+          // contents. Otherwise repaint the one row and leave the drag
+          // machinery, scroll position and hover state alone.
+          if (evt.from.children.length === 0 ||
+              evt.from.dataset.rank === "none" || target === "none") {
+            render();
+            return;
+          }
+          patchRow(evt.item, j);
+          refreshTier(evt.from);
+          refreshTier(evt.to);
+          updateCounts();
+          autosave();
+        });
       },
     }));
   }
   for (const gap of document.querySelectorAll(".gap")) {
     sortables.push(new Sortable(gap, {
       ...opts,
+      // A drop in a gap always mints a tier, so the board has to be rebuilt.
       onAdd: evt => {
         const j = byId(evt.item.dataset.id);
         const g = Number(evt.to.dataset.gap);
-        queue(() => noteShift(splitInto(j, g, "low")));
+        queue(() => { noteShift(splitInto(j, g, "low")); render(); });
       },
     }));
   }
@@ -781,8 +861,8 @@ function wireDrag() {
 
 const byId = id => S.judges.find(j => j.i === Number(id));
 
-/** Let SortableJS finish its own DOM surgery before we blow the board away. */
-function queue(fn) { setTimeout(() => { fn(); render(); }, 0); }
+/** Let SortableJS finish its own DOM surgery before we touch the board. */
+function queue(fn) { setTimeout(fn, 0); }
 
 function noteShift(n) {
   const el = $("#shift-note");
@@ -808,13 +888,15 @@ $("#board").addEventListener("change", e => {
 
 /* ---- revert ---- */
 
-$("#board").addEventListener("click", e => {
-  const b = e.target.closest("[data-revert]");
-  if (!b) return;
-  const j = byId(b.dataset.revert);
-  j.rank = j.origRank;
-  render();
-});
+for (const sel of ["#board", "#unranked"]) {
+  $(sel).addEventListener("click", e => {
+    const b = e.target.closest("[data-revert]");
+    if (!b) return;
+    const j = byId(b.dataset.revert);
+    j.rank = j.origRank;
+    render();
+  });
+}
 
 $("#revert-all").addEventListener("click", () => {
   if (!window.confirm(`Put all ${movedCount()} moved judges back to their imported ranks?`)) return;
