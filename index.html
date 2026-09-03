@@ -4,25 +4,1078 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Judge Pref Tool</title>
+
+<!--
+  Phase 1: import a Tabroom pref-sheet CSV, re-rank it, export it back.
+
+  Everything lives in this one file on purpose. The app has to work both from
+  GitHub Pages and from a plain `file://` open, and `file://` blocks module
+  *imports* between local files (though an inline `type="module"` script is
+  fine). One file also means no build step, which is the point.
+
+  The script below is split by `core:start` / `core:end` markers. Everything
+  between them is pure -- no DOM, no localStorage -- and tests/harness.mjs
+  slices exactly that block out of this file and imports it, so the test suite
+  exercises the shipping code rather than a copy of it. Keep DOM access on the
+  far side of the marker.
+
+  Read docs/csv-formats.md before changing any of the parsing. The short
+  version: the pref export declares 6 header names for 7 columns, and the
+  unnamed column is the rank, inserted in the middle -- so every header name
+  from that point rightward is attached to the wrong column.
+-->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
+
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 16px/1.6 system-ui, -apple-system, sans-serif;
-         max-width: 34rem; margin: 4rem auto; padding: 0 1.25rem; }
-  code { background: color-mix(in srgb, currentColor 10%, transparent);
-         padding: .1em .35em; border-radius: 3px; }
-  ol { padding-left: 1.2rem; }
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa;
+    --panel: #fff;
+    --ink: #1b1b1a;
+    --muted: #6b6b68;
+    --line: #dedcd7;
+    --accent: #2f6f4f;
+    --accent-soft: #e6f0e9;
+    --warn: #8a5a00;
+    --warn-soft: #fdf3df;
+    --moved: #8a3a00;
+    --moved-soft: #fdeee2;
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181a; --panel: #1f2124; --ink: #e8e6e2; --muted: #9a9893;
+      --line: #34373b; --accent: #7fc39c; --accent-soft: #1e2f27;
+      --warn: #e3b464; --warn-soft: #302716;
+      --moved: #f0a06a; --moved-soft: #33221a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--ink);
+    margin: 0; padding: 0 1rem 6rem;
+  }
+  .wrap { max-width: 62rem; margin: 0 auto; }
+  h1 { font-size: 1.3rem; margin: 1.6rem 0 .2rem; }
+  h2 { font-size: 1.05rem; margin: 1.8rem 0 .5rem; }
+  p.sub { color: var(--muted); margin: 0 0 1.4rem; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .87em; }
+
+  button {
+    font: inherit; padding: .4rem .8rem; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @media (prefers-color-scheme: dark) { button.primary { color: #10241a; } }
+  input[type=search], input[type=number], select {
+    font: inherit; padding: .35rem .5rem; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 1rem 1.1rem;
+  }
+  .note {
+    border-left: 3px solid var(--warn); background: var(--warn-soft);
+    color: var(--ink); padding: .7rem .9rem; border-radius: 0 6px 6px 0;
+    margin: 1rem 0; font-size: .92rem;
+  }
+  .note.info { border-left-color: var(--accent); background: var(--accent-soft); }
+  .note .row { display: flex; gap: .5rem; align-items: center; margin-top: .6rem; flex-wrap: wrap; }
+  .hide { display: none !important; }
+
+  /* ---- import ---------------------------------------------------------- */
+  #drop {
+    border: 2px dashed var(--line); border-radius: var(--radius);
+    padding: 2.4rem 1rem; text-align: center; color: var(--muted);
+    background: var(--panel);
+  }
+  #drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  #resume-list { list-style: none; padding: 0; margin: .6rem 0 0; }
+  #resume-list li {
+    display: flex; gap: .6rem; align-items: center; justify-content: space-between;
+    padding: .45rem 0; border-top: 1px solid var(--line);
+  }
+
+  /* ---- mapper ---------------------------------------------------------- */
+  table.map { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  table.map th, table.map td {
+    text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.map th { color: var(--muted); font-weight: 600; font-size: .82rem;
+                 text-transform: uppercase; letter-spacing: .03em; }
+  td.samples { color: var(--muted); }
+  td.samples span { display: inline-block; margin-right: .55rem; }
+  .unnamed { color: var(--warn); font-style: italic; }
+  .shifted-name { color: var(--muted); text-decoration: line-through; }
+
+  /* ---- editor ---------------------------------------------------------- */
+  #bar {
+    position: sticky; top: 0; z-index: 20; background: var(--bg);
+    padding: .7rem 0; border-bottom: 1px solid var(--line);
+    display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+  }
+  #bar .grow { flex: 1 1 8rem; }
+  #counts { color: var(--muted); font-size: .9rem; }
+  #counts b { color: var(--moved); }
+
+  #board { margin-top: 1rem; }
+  .tier {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .tier-head {
+    display: flex; align-items: center; gap: .55rem;
+    padding: .35rem .6rem; border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--ink) 3%, var(--panel));
+  }
+  .tier-head label { color: var(--muted); font-size: .8rem; text-transform: uppercase;
+                     letter-spacing: .04em; }
+  .tier-rank { width: 5rem; }
+  .tier-count { color: var(--muted); font-size: .85rem; margin-left: auto; }
+
+  ul.judges { list-style: none; margin: 0; padding: .25rem; min-height: 1.9rem; }
+  li.judge {
+    display: flex; gap: .55rem; align-items: baseline; flex-wrap: wrap;
+    padding: .35rem .5rem; border-radius: 6px; cursor: grab;
+  }
+  li.judge:focus-visible, li.judge:focus {
+    outline: 2px solid var(--accent); outline-offset: -2px;
+  }
+  li.judge:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+  li.judge.moved { background: var(--moved-soft); }
+  .jname { font-weight: 600; }
+  .jschool { color: var(--muted); font-size: .9rem; }
+  .chips { display: flex; gap: .4rem; flex-wrap: wrap; margin-left: auto; }
+  .chip {
+    color: var(--muted); font-size: .78rem;
+    border: 1px solid var(--line); border-radius: 999px; padding: 0 .5rem;
+  }
+  .chip.readonly { font-style: italic; }
+  .badge {
+    font-size: .78rem; color: var(--moved); border: 1px solid var(--moved);
+    border-radius: 999px; padding: 0 .5rem; cursor: pointer;
+  }
+
+  .gap { height: 10px; margin: 2px 0; border-radius: 5px; }
+  #board.dragging .gap { height: 24px; border: 1px dashed var(--line); }
+  #board.dragging .gap:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .sortable-ghost { opacity: .35; }
+
+  #unranked { margin-top: 1.4rem; }
+  #unranked .tier-head { background: var(--warn-soft); }
+  .filtered-out { display: none; }
 </style>
 </head>
 <body>
-  <h1>Judge Pref Tool</h1>
-  <p>Not built yet — this page is a placeholder so the site has something to serve.</p>
-  <p>When it exists, it will:</p>
-  <ol>
-    <li>Import a Tabroom pref-sheet CSV</li>
-    <li>Let you re-rank by drag, search-and-nudge, or tier</li>
-    <li>Export an edited CSV</li>
-    <li>Hand off to <code>tools/diff_prefs.py</code> for the re-entry checklist</li>
-  </ol>
-  <p>See <code>PLAN.md</code> in the repo for the build order.</p>
+<div class="wrap">
+
+<h1>Judge Pref Tool</h1>
+<p class="sub">Import a Tabroom pref-sheet CSV, re-rank it, export it back.
+  Nothing leaves your browser.</p>
+
+<div id="libs-missing" class="note hide">
+  Couldn't load PapaParse or SortableJS from the CDN. The app needs both.
+  Check your connection and reload.
+</div>
+
+<!-- ===================== 1. import ===================== -->
+<section id="screen-import">
+  <div id="drop">
+    <p><strong>Drop a pref-sheet CSV here</strong>, or</p>
+    <p><input type="file" id="file" accept=".csv,text/csv"></p>
+  </div>
+  <div id="resume" class="hide">
+    <h2>In progress</h2>
+    <ul id="resume-list"></ul>
+  </div>
+</section>
+
+<!-- ===================== 2. column mapping ===================== -->
+<section id="screen-map" class="hide">
+  <h2>Which column is which?</h2>
+  <p class="sub" id="map-sub"></p>
+  <div id="map-warning" class="note hide"></div>
+  <div class="panel">
+    <table class="map">
+      <thead>
+        <tr><th>#</th><th>Header says</th><th>First rows</th><th>Use as</th></tr>
+      </thead>
+      <tbody id="map-body"></tbody>
+    </table>
+  </div>
+  <div id="map-error" class="note hide"></div>
+  <p style="margin-top:1rem">
+    <button class="primary" id="map-apply">Open the editor</button>
+    <button id="map-cancel">Pick a different file</button>
+  </p>
+</section>
+
+<!-- ===================== 3. editor ===================== -->
+<section id="screen-edit" class="hide">
+  <div id="bar">
+    <strong id="filename" class="mono"></strong>
+    <span id="counts"></span>
+    <span class="grow"></span>
+    <input type="search" id="filter" placeholder="Filter judges..." autocomplete="off">
+    <button id="revert-all">Revert all</button>
+    <button class="primary" id="export">Export CSV</button>
+    <button id="restart">Close</button>
+  </div>
+
+  <div id="restore-prompt" class="note info hide"></div>
+  <div id="shift-note" class="note hide"></div>
+  <div id="save-note" class="note hide"></div>
+
+  <p class="sub" style="margin:.9rem 0 0">
+    Drag a judge onto another tier to join it, or into a gap between tiers to
+    split off a new one. Keyboard: <code>&uarr;</code>/<code>&darr;</code> joins the tier
+    above or below, <code>&#8679;&uarr;</code>/<code>&#8679;&darr;</code> splits into a new tier.
+    Untouched tiers keep their original rank, gaps and all.
+  </p>
+  <p class="sub hide" id="filter-note" style="margin:.5rem 0 0">
+    Drag is off while a filter is active &mdash; the tiers you'd drop into are hidden.
+    Arrow keys still work.
+  </p>
+
+  <div id="board"></div>
+  <div id="unranked" class="hide"></div>
+</section>
+
+</div>
+
+<script type="module">
+"use strict";
+
+/* ==== core:start =========================================================
+   Pure logic: no DOM, no localStorage, no timers. tests/harness.mjs slices
+   this block out of index.html verbatim and imports it, so anything added
+   below that touches `document` will break the test suite.
+   ======================================================================== */
+
+/** Stable short hash, so storage keys stay readable instead of being whole headers. */
+function hash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36);
+}
+
+const isInt = s => { s = String(s).trim(); return s !== "" && /^-?\d+$/.test(s); };
+const isDecimal = s => { s = String(s).trim(); return s !== "" && /^-?\d*\.\d+$/.test(s); };
+
+/**
+ * Parse a pref-sheet CSV into a header, padded rows, and the true column count.
+ *
+ * `width` is the max of the header length and every row length, NOT the header
+ * length: the pref export names 6 columns and ships 7 fields. Rows are padded
+ * to `width` so they can be indexed uniformly, and `lens` remembers each row's
+ * real length so the export can trim that padding back off again.
+ */
+function parseCsv(text) {
+  const res = Papa.parse(text.replace(/^\uFEFF/, ""), { skipEmptyLines: "greedy" });
+  const data = res.data.filter(r => r.some(c => String(c).trim() !== ""));
+  if (!data.length) throw new Error("That file has no rows in it.");
+  const header = data[0].map(String);
+  const raw = data.slice(1).map(r => r.map(String));
+  if (!raw.length) throw new Error("That file has a header but no judges.");
+  const width = Math.max(header.length, ...raw.map(r => r.length));
+  const lens = raw.map(r => r.length);
+  const rows = raw.map(r => r.length === width ? r : r.concat(Array(width - r.length).fill("")));
+  return { header, rows, lens, width };
+}
+
+/** Per-column shape: sample values plus whether the column is all-int / all-decimal. */
+function profile(rows, width) {
+  const cols = [];
+  for (let i = 0; i < width; i++) {
+    const vals = rows.map(r => r[i]);
+    const filled = vals.filter(v => String(v).trim() !== "");
+    cols.push({
+      idx: i,
+      samples: vals.slice(0, 3),
+      nonEmpty: filled.length,
+      allInt: filled.length > 0 && filled.every(isInt),
+      allDecimal: filled.length > 0 && filled.every(isDecimal),
+    });
+  }
+  return cols;
+}
+
+/**
+ * Guess the column mapping, and work out how far the header names can be trusted.
+ *
+ * When rows are wider than the header, Tabroom has dropped the *rank* column's
+ * name from the middle of the header row. Every name at or right of that point
+ * therefore labels the wrong column. We locate the insertion point the same way
+ * tools/diff_prefs.py does -- by shape, not by name: rank is the integer column
+ * immediately left of the decimal Rating column at the far right.
+ *
+ * Returns { map, trustedUpto, shifted }; header names are only meaningful for
+ * indices < trustedUpto.
+ */
+function guess(header, cols, width) {
+  const map = { first: null, last: null, full: null, rank: null, school: null, rating: null };
+  let trustedUpto = Math.min(header.length, width);
+  let shifted = false;
+
+  if (width > header.length) {
+    shifted = true;
+    const r = width - 2, g = width - 1;
+    if (r >= 0 && cols[r].allInt && cols[g].allDecimal) {
+      map.rank = r;
+      map.rating = g;
+      trustedUpto = r;      // the unnamed column was inserted here
+    } else {
+      trustedUpto = 0;      // can't locate the surplus, so trust no name at all
+    }
+  }
+
+  const byName = name => {
+    for (let i = 0; i < trustedUpto; i++) {
+      if (header[i].trim().toLowerCase() === name) return i;
+    }
+    return null;
+  };
+
+  if (map.rank === null) map.rank = byName("rank") ?? byName("pref") ?? null;
+  if (map.rating === null) map.rating = byName("rating") ?? null;
+  map.first = byName("first");
+  map.last = byName("last");
+  map.school = byName("school") ?? byName("institution");
+  return { map, trustedUpto, shifted };
+}
+
+/**
+ * The loaded sheet.
+ *
+ * @typedef Judge
+ * @property {number} i             index into the original file's rows
+ * @property {string[]} fields      the row, padded to `width`
+ * @property {string} origRaw       the rank cell exactly as imported
+ * @property {number|null} origRank parsed original rank (null = unranked)
+ * @property {number|null} rank     current rank
+ */
+let S = null;
+
+/** Build the sheet state from a parsed file plus a confirmed column mapping. */
+function makeSheet(fileName, parsed, map) {
+  const parseRank = s => (isInt(s) ? parseInt(String(s).trim(), 10) : null);
+  return {
+    fileName,
+    header: parsed.header,
+    width: parsed.width,
+    lens: parsed.lens,
+    map,
+    judges: parsed.rows.map((fields, i) => {
+      const raw = fields[map.rank];
+      return { i, fields, origRaw: raw, origRank: parseRank(raw), rank: parseRank(raw) };
+    }),
+  };
+}
+
+/* ---- tiers --------------------------------------------------------------
+
+   Tiers are *derived* from the ranks, never stored. That is the whole trick:
+   there is no tier list to keep in sync, an emptied tier just stops existing,
+   and a judge nobody touched keeps the exact rank value they were imported
+   with -- gaps, ties and all.
+*/
+
+function tiers() {
+  const byRank = new Map();
+  const unranked = [];
+  for (const j of S.judges) {
+    if (j.rank === null) { unranked.push(j); continue; }
+    if (!byRank.has(j.rank)) byRank.set(j.rank, []);
+    byRank.get(j.rank).push(j);
+  }
+  const ranked = [...byRank.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([rank, judges]) => ({ rank, judges }));
+  return { ranked, unranked };
+}
+
+/**
+ * Allocate a free rank for a new tier slotted in at gap `i` of `list`
+ * (gap i sits immediately above list[i]).
+ *
+ * `prefer` says which neighbour the judge is arriving from, so the new rank
+ * lands next to where they already were: "high" hugs the tier below (nudging
+ * up), "low" hugs the tier above (nudging down, and the default for a drag).
+ * Without it, nudging one step out of rank 10 in a `1, 10, 80` sheet would land
+ * on 2 or 79 instead of 9 or 11.
+ *
+ * The good case costs nothing: if the neighbours have a numeric gap between
+ * them, take a value inside it and no existing judge changes at all. Only when
+ * they are consecutive do we have to shift, and then we shift the *shortest*
+ * possible run -- the contiguous block below the gap, stopping at the first
+ * natural gap. Keeping that run short is the point: every judge we shift is a
+ * judge who shows up in the Phase 2 diff as a rank to re-type by hand.
+ *
+ * Mutates ranks in place. Returns { rank, shifted }, where `shifted` counts the
+ * judges that had to move out of the way.
+ */
+function allocRank(list, i, prefer) {
+  const above = i > 0 ? list[i - 1].rank : null;
+  const below = i < list.length ? list[i].rank : null;
+
+  if (below === null) return { rank: (above === null ? 0 : above) + 1, shifted: 0 };
+
+  const lo = above === null ? 1 : above + 1;   // hugs the tier above
+  const hi = below - 1;                        // hugs the tier below
+  if (lo <= hi) return { rank: prefer === "high" ? hi : lo, shifted: 0 };
+
+  let end = i;
+  while (end + 1 < list.length && list[end + 1].rank === list[end].rank + 1) end++;
+  let shifted = 0;
+  for (let t = i; t <= end; t++) {
+    for (const j of list[t].judges) { j.rank += 1; shifted++; }
+  }
+  return { rank: lo, shifted };
+}
+
+/** Move `judge` into a brand-new tier at gap `gapIndex` of the current tier list. */
+function splitInto(judge, gapIndex, prefer) {
+  const cur = tiers().ranked;
+  const mine = cur.findIndex(t => t.judges.includes(judge));
+
+  // Already alone in a tier, and asked to split into the gap directly above or
+  // below it: that is where they already are. Do nothing, rather than invent a
+  // rank that could fling them across a large gap in the numbering.
+  if (mine >= 0 && cur[mine].judges.length === 1 &&
+      (gapIndex === mine || gapIndex === mine + 1)) return 0;
+
+  // Allocate against the list as it will look *after* the judge leaves,
+  // otherwise a judge alone in a tier collides with their own old rank.
+  const list = cur.map(t => ({ rank: t.rank, judges: t.judges.filter(j => j !== judge) }));
+  let g = gapIndex;
+  if (mine >= 0 && list[mine].judges.length === 0) {
+    list.splice(mine, 1);
+    if (mine < gapIndex) g--;
+  }
+  const { rank, shifted } = allocRank(list, g, prefer);
+  judge.rank = rank;
+  return shifted;
+}
+
+/** Re-rank an entire tier. Merges into an existing tier if the value collides. */
+function retier(oldRank, newRank) {
+  for (const j of S.judges) if (j.rank === oldRank) j.rank = newRank;
+}
+
+const movedCount = () => S.judges.filter(j => j.rank !== j.origRank).length;
+
+/* ---- display helpers ---------------------------------------------------- */
+
+function judgeName(j) {
+  const m = S.map;
+  if (m.full !== null) return j.fields[m.full].trim();
+  return [m.first, m.last]
+    .filter(i => i !== null)
+    .map(i => j.fields[i].trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Header names are only trustworthy left of the unnamed rank column. */
+function trustedUpto() {
+  return S.width > S.header.length ? S.map.rank : S.header.length;
+}
+
+/** Columns the mapping did not claim, shown as greyed context on each row. */
+function extraCols() {
+  const claimed = new Set(Object.values(S.map).filter(v => v !== null));
+  const limit = trustedUpto();
+  const out = [];
+  for (let i = 0; i < S.width; i++) {
+    if (claimed.has(i)) continue;
+    const named = i < S.header.length && i < limit && S.header[i].trim() !== "";
+    out.push({ i, label: named ? S.header[i].trim() : `col ${i + 1}` });
+  }
+  return out;
+}
+
+/* ---- export -------------------------------------------------------------
+
+   The rule: the exported file may differ from the imported one in the rank
+   column and nowhere else. So rows are rebuilt from the original fields, the
+   rank cell of an unmoved judge is written back as its *exact original string*,
+   and the padding added at import is trimmed off again. Exporting a sheet you
+   have not touched must reproduce the input byte for byte.
+*/
+
+function buildCsv() {
+  const rankCol = S.map.rank;
+  const rows = S.judges.map(j => {
+    const out = j.fields.slice();
+    out[rankCol] = (j.rank === j.origRank) ? j.origRaw
+                 : (j.rank === null ? "" : String(j.rank));
+    return out.slice(0, Math.max(S.lens[j.i], rankCol + 1));
+  });
+  return Papa.unparse([S.header, ...rows], { newline: "\n" }) + "\n";
+}
+
+/* ==== core:end ========================================================== */
+
+
+/* ======================================================================
+   storage
+
+   GitHub Pages puts every <user>.github.io project on one origin, so every
+   key here is namespaced.
+   ====================================================================== */
+const NS = "prefsutil:";
+
+const store = {
+  get(k) {
+    try { const v = localStorage.getItem(NS + k); return v === null ? null : JSON.parse(v); }
+    catch { return null; }
+  },
+  set(k, v) {
+    try { localStorage.setItem(NS + k, JSON.stringify(v)); return true; }
+    catch { return false; }
+  },
+  del(k) { try { localStorage.removeItem(NS + k); } catch { /* ignore */ } },
+  keys(prefix) {
+    const out = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(NS + prefix)) out.push(k.slice(NS.length));
+      }
+    } catch { /* ignore */ }
+    return out;
+  },
+};
+
+const sheetKey = fileName => "sheet:" + hash(fileName);
+const mapKey = (header, width) => "mapping:" + hash(width + " " + header.join(""));
+
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s).replace(/[&<>"]/g,
+  c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function alertNote(el, html) {
+  el.innerHTML = html;
+  el.classList.remove("hide");
+}
+
+/* ======================================================================
+   import screen
+   ====================================================================== */
+
+function showScreen(name) {
+  for (const s of ["import", "map", "edit"]) {
+    $("#screen-" + s).classList.toggle("hide", s !== name);
+  }
+}
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try { startMapping(file.name, parseCsv(String(reader.result))); }
+    catch (err) { window.alert(err.message); }
+  };
+  reader.onerror = () => window.alert("Couldn't read that file.");
+  reader.readAsText(file, "utf-8");
+}
+
+$("#file").addEventListener("change", e => {
+  if (e.target.files[0]) readFile(e.target.files[0]);
+});
+
+const drop = $("#drop");
+for (const ev of ["dragenter", "dragover"]) {
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); });
+}
+for (const ev of ["dragleave", "drop"]) {
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); });
+}
+drop.addEventListener("drop", e => {
+  const f = e.dataTransfer.files[0];
+  if (f) readFile(f);
+});
+
+function listSaved() {
+  const rows = [];
+  for (const k of store.keys("sheet:")) {
+    const v = store.get(k);
+    if (v && v.fileName) rows.push({ k, v });
+  }
+  rows.sort((a, b) => (b.v.savedAt || 0) - (a.v.savedAt || 0));
+
+  $("#resume").classList.toggle("hide", rows.length === 0);
+  $("#resume-list").innerHTML = rows.map(({ k, v }) => `
+    <li>
+      <span><span class="mono">${esc(v.fileName)}</span>
+        <span class="jschool">&mdash; ${v.judges.length} judges, ${v.moved} moved,
+        saved ${esc(new Date(v.savedAt).toLocaleString())}</span></span>
+      <span>
+        <button data-resume="${esc(k)}">Resume</button>
+        <button data-forget="${esc(k)}">Discard</button>
+      </span>
+    </li>`).join("");
+}
+
+$("#resume-list").addEventListener("click", e => {
+  const r = e.target.closest("[data-resume]");
+  const f = e.target.closest("[data-forget]");
+  if (r) resume(r.dataset.resume);
+  if (f && window.confirm("Discard the saved rank changes for this sheet?")) {
+    store.del(f.dataset.forget);
+    listSaved();
+  }
+});
+
+function resume(key) {
+  const v = store.get(key);
+  if (!v) return;
+  S = {
+    fileName: v.fileName, header: v.header, width: v.width, lens: v.lens, map: v.map,
+    judges: v.judges.map((j, i) => ({
+      i, fields: j.fields, origRaw: j.origRaw, origRank: j.origRank, rank: j.rank,
+    })),
+  };
+  openEditor();
+}
+
+/* ======================================================================
+   mapping screen
+   ====================================================================== */
+
+const ROLES = [
+  ["", "—"],
+  ["first", "First name"],
+  ["last", "Last name"],
+  ["full", "Full name"],
+  ["rank", "Rank"],
+  ["school", "School (context)"],
+  ["rating", "Rating (read-only)"],
+];
+
+let pending = null;   // { fileName, header, rows, lens, width, cols, trustedUpto }
+
+function startMapping(fileName, parsed) {
+  const cols = profile(parsed.rows, parsed.width);
+  const g = guess(parsed.header, cols, parsed.width);
+  const saved = store.get(mapKey(parsed.header, parsed.width));
+  const map = saved || g.map;
+
+  pending = { fileName, ...parsed, cols, trustedUpto: g.trustedUpto };
+
+  $("#map-sub").textContent =
+    `${fileName} — ${parsed.rows.length} judges, ${parsed.width} columns.` +
+    (saved ? " Reusing the mapping you saved for this export shape." : "");
+
+  const warn = $("#map-warning");
+  if (g.shifted) {
+    warn.classList.remove("hide");
+    warn.innerHTML = `This file declares <b>${parsed.header.length}</b> header names for
+      <b>${parsed.width}</b> columns. Tabroom leaves the rank column unnamed, and it sits in
+      the <em>middle</em> of the row &mdash; so every header name from that point rightward
+      labels the wrong column. Trust the sample values below, not the names.` +
+      (g.map.rank !== null
+        ? ` Guessed column <b>${g.map.rank + 1}</b> as the rank: it is the integer column
+            immediately left of the decimal rating.`
+        : ` Couldn't work out which column is the rank &mdash; please set it by hand.`);
+  } else {
+    warn.classList.add("hide");
+  }
+
+  const roleOf = i => {
+    for (const [k] of ROLES) if (k && map[k] === i) return k;
+    return "";
+  };
+
+  $("#map-body").innerHTML = pending.cols.map(c => {
+    const named = c.idx < parsed.header.length;
+    const trusted = c.idx < pending.trustedUpto;
+    const label = !named
+      ? `<span class="unnamed">(unnamed)</span>`
+      : trusted
+        ? esc(parsed.header[c.idx])
+        : `<span class="shifted-name">${esc(parsed.header[c.idx])}</span>
+           <span class="unnamed">&larr; shifted</span>`;
+    const samples = c.samples
+      .map(v => `<span>${String(v).trim() === "" ? "<i>empty</i>" : esc(v)}</span>`).join("");
+    const opts = ROLES.map(([k, lbl]) =>
+      `<option value="${k}"${roleOf(c.idx) === k ? " selected" : ""}>${lbl}</option>`).join("");
+    return `<tr>
+      <td class="mono">${c.idx + 1}</td>
+      <td>${label}</td>
+      <td class="samples">${samples}</td>
+      <td><select data-col="${c.idx}">${opts}</select></td>
+    </tr>`;
+  }).join("");
+
+  $("#map-error").classList.add("hide");
+  showScreen("map");
+}
+
+/** Read the role selects back into a mapping, rejecting anything unusable. */
+function readMapping() {
+  const map = { first: null, last: null, full: null, rank: null, school: null, rating: null };
+  const dupes = [];
+  for (const sel of document.querySelectorAll("#map-body select")) {
+    const role = sel.value;
+    if (!role) continue;
+    const i = Number(sel.dataset.col);
+    if (map[role] !== null) dupes.push(role);
+    map[role] = i;
+  }
+  if (dupes.length) {
+    return { error: `Two columns are both marked <b>${esc(dupes[0])}</b>. Pick one.` };
+  }
+  if (map.rank === null) {
+    return { error: "Mark exactly one column as the <b>rank</b> &mdash; that's the column this tool edits." };
+  }
+  if (map.full !== null && (map.first !== null || map.last !== null)) {
+    return { error: "Use either a single <b>Full name</b> column or <b>First</b>/<b>Last</b>, not both." };
+  }
+  if (map.full === null && map.first === null && map.last === null) {
+    return { error: "Mark at least one name column, so judges can be told apart." };
+  }
+  return { map };
+}
+
+$("#map-apply").addEventListener("click", () => {
+  const { map, error } = readMapping();
+  if (error) return alertNote($("#map-error"), error);
+  $("#map-error").classList.add("hide");
+
+  store.set(mapKey(pending.header, pending.width), map);
+  S = makeSheet(pending.fileName, pending, map);
+  openEditor();
+  offerRestore();
+});
+
+$("#map-cancel").addEventListener("click", () => {
+  pending = null;
+  showScreen("import");
+  listSaved();
+});
+
+/**
+ * If this filename has autosaved rank changes from a previous session, offer
+ * them. Never apply them silently over a fresh import.
+ */
+function offerRestore() {
+  const el = $("#restore-prompt");
+  el.classList.add("hide");
+  const saved = store.get(sheetKey(S.fileName));
+  if (!saved || saved.judges.length !== S.judges.length || !saved.moved) return;
+  const ranks = saved.judges.map(j => j.rank);
+  alertNote(el, `You have <b>${saved.moved}</b> unexported rank changes saved for
+    <span class="mono">${esc(S.fileName)}</span> from
+    ${esc(new Date(saved.savedAt).toLocaleString())}.
+    <span class="row">
+      <button id="do-restore" class="primary">Restore them</button>
+      <button id="do-ignore">Start from the file</button>
+    </span>`);
+  $("#do-restore").addEventListener("click", () => {
+    for (let i = 0; i < S.judges.length; i++) S.judges[i].rank = ranks[i];
+    el.classList.add("hide");
+    render();
+  });
+  $("#do-ignore").addEventListener("click", () => el.classList.add("hide"));
+}
+
+/* ======================================================================
+   editor
+   ====================================================================== */
+
+let sortables = [];
+let focusedId = null;
+
+function openEditor() {
+  $("#filename").textContent = S.fileName;
+  $("#filter").value = "";
+  for (const id of ["#shift-note", "#save-note", "#restore-prompt"]) {
+    $(id).classList.add("hide");
+  }
+  focusedId = null;
+  showScreen("edit");
+  render();
+}
+
+function judgeHtml(j, extras) {
+  const m = S.map;
+  const moved = j.rank !== j.origRank;
+  const school = m.school !== null ? j.fields[m.school].trim() : "";
+  const rating = m.rating !== null ? j.fields[m.rating].trim() : "";
+  const chips = extras
+    .filter(c => j.fields[c.i].trim() !== "")
+    .map(c => `<span class="chip">${esc(c.label)} ${esc(j.fields[c.i].trim())}</span>`)
+    .join("");
+  const was = j.origRank === null ? "unranked" : j.origRank;
+  const name = judgeName(j);
+  return `<li class="judge${moved ? " moved" : ""}" data-id="${j.i}" tabindex="0"
+              data-name="${esc(name.toLowerCase())}"
+              data-school="${esc(school.toLowerCase())}">
+    <span class="jname">${name ? esc(name) : "<i>(unnamed)</i>"}</span>
+    ${school ? `<span class="jschool">${esc(school)}</span>` : ""}
+    ${moved ? `<span class="badge" data-revert="${j.i}" title="Put back">was ${esc(was)} &#8634;</span>` : ""}
+    <span class="chips">
+      ${rating ? `<span class="chip readonly" title="Tabroom-computed percentile; read-only">rating ${esc(rating)}</span>` : ""}
+      ${chips}
+    </span>
+  </li>`;
+}
+
+function render() {
+  const { ranked, unranked } = tiers();
+  const extras = extraCols();
+
+  let html = `<div class="gap" data-gap="0"></div>`;
+  ranked.forEach((t, i) => {
+    html += `<section class="tier">
+      <div class="tier-head">
+        <label for="tr${i}">Rank</label>
+        <input class="tier-rank" id="tr${i}" type="number" min="1" step="1"
+               value="${t.rank}" data-rank="${t.rank}">
+        <span class="tier-count">${t.judges.length} judge${t.judges.length === 1 ? "" : "s"}</span>
+      </div>
+      <ul class="judges" data-rank="${t.rank}">${t.judges.map(j => judgeHtml(j, extras)).join("")}</ul>
+    </section>
+    <div class="gap" data-gap="${i + 1}"></div>`;
+  });
+  $("#board").innerHTML = html;
+
+  const un = $("#unranked");
+  un.classList.toggle("hide", unranked.length === 0);
+  un.innerHTML = unranked.length ? `<section class="tier">
+      <div class="tier-head">
+        <label>Unranked</label>
+        <span class="tier-count">${unranked.length} judge${unranked.length === 1 ? "" : "s"}
+          with no rank in the imported file</span>
+      </div>
+      <ul class="judges" data-rank="none">${unranked.map(j => judgeHtml(j, extras)).join("")}</ul>
+    </section>` : "";
+
+  wireDrag();
+  applyFilter();
+
+  const moved = movedCount();
+  // Any edit is an implicit answer to the restore prompt, so retire it and let
+  // autosave resume.
+  if (moved > 0) $("#restore-prompt").classList.add("hide");
+  $("#counts").innerHTML = `${S.judges.length} judges &middot; ` +
+    (moved ? `<b>${moved} moved</b>` : "none moved");
+  $("#revert-all").disabled = moved === 0;
+
+  if (focusedId !== null) {
+    const el = document.querySelector(`li.judge[data-id="${focusedId}"]`);
+    if (el) el.focus({ preventScroll: true });
+  }
+  autosave();
+}
+
+/* ---- drag ---- */
+
+function wireDrag() {
+  for (const s of sortables) s.destroy();
+  sortables = [];
+  const opts = {
+    group: "judges",
+    animation: 120,
+    disabled: $("#filter").value.trim() !== "",
+    emptyInsertThreshold: 14,
+    onStart: () => $("#board").classList.add("dragging"),
+    onEnd: () => $("#board").classList.remove("dragging"),
+  };
+
+  for (const ul of document.querySelectorAll("ul.judges")) {
+    sortables.push(new Sortable(ul, {
+      ...opts,
+      // Order within a tier carries no meaning -- everyone in it shares a rank --
+      // so a same-list drop is deliberately left alone rather than snapped back.
+      onAdd: evt => {
+        const j = byId(evt.item.dataset.id);
+        const target = evt.to.dataset.rank;
+        queue(() => { j.rank = target === "none" ? null : Number(target); noteShift(0); });
+      },
+    }));
+  }
+  for (const gap of document.querySelectorAll(".gap")) {
+    sortables.push(new Sortable(gap, {
+      ...opts,
+      onAdd: evt => {
+        const j = byId(evt.item.dataset.id);
+        const g = Number(evt.to.dataset.gap);
+        queue(() => noteShift(splitInto(j, g, "low")));
+      },
+    }));
+  }
+}
+
+const byId = id => S.judges.find(j => j.i === Number(id));
+
+/** Let SortableJS finish its own DOM surgery before we blow the board away. */
+function queue(fn) { setTimeout(() => { fn(); render(); }, 0); }
+
+function noteShift(n) {
+  const el = $("#shift-note");
+  if (!n) { el.classList.add("hide"); return; }
+  alertNote(el, `No free rank number there, so <b>${n}</b> judge${n === 1 ? "" : "s"}
+    below shifted down by one to make room. They now count as moved, and will
+    show up in the diff as ranks to re-enter.`);
+}
+
+/* ---- tier renumbering ---- */
+
+$("#board").addEventListener("change", e => {
+  const input = e.target.closest(".tier-rank");
+  if (!input) return;
+  const oldRank = Number(input.dataset.rank);
+  const next = parseInt(input.value, 10);
+  if (!Number.isInteger(next) || next < 1) { input.value = oldRank; return; }
+  if (next === oldRank) return;
+  retier(oldRank, next);
+  noteShift(0);
+  render();
+});
+
+/* ---- revert ---- */
+
+$("#board").addEventListener("click", e => {
+  const b = e.target.closest("[data-revert]");
+  if (!b) return;
+  const j = byId(b.dataset.revert);
+  j.rank = j.origRank;
+  render();
+});
+
+$("#revert-all").addEventListener("click", () => {
+  if (!window.confirm(`Put all ${movedCount()} moved judges back to their imported ranks?`)) return;
+  for (const j of S.judges) j.rank = j.origRank;
+  noteShift(0);
+  render();
+});
+
+/* ---- keyboard ----
+
+   The reason this exists at all: 53 judges in a pref sheet and 145 in a roster
+   is past the size where dragging is pleasant. Arrow keys are the real
+   interface; drag is for the occasional big move.
+*/
+
+document.addEventListener("keydown", e => {
+  const li = e.target.closest ? e.target.closest("li.judge") : null;
+  if (!li || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+  e.preventDefault();
+
+  const j = byId(li.dataset.id);
+  const { ranked } = tiers();
+  const up = e.key === "ArrowUp";
+  focusedId = j.i;
+
+  if (j.rank === null) {
+    // An unranked judge has only one direction to go: into the bottom of the list.
+    if (!up) return;
+    if (e.shiftKey || !ranked.length) noteShift(splitInto(j, ranked.length, "low"));
+    else j.rank = ranked[ranked.length - 1].rank;
+    render();
+    return;
+  }
+
+  const mine = ranked.findIndex(t => t.rank === j.rank);
+  if (e.shiftKey) {
+    noteShift(splitInto(j, up ? mine : mine + 1, up ? "high" : "low"));
+  } else {
+    const next = ranked[up ? mine - 1 : mine + 1];
+    if (!next) return;                       // already at the end of the list
+    j.rank = next.rank;
+    noteShift(0);
+  }
+  render();
+});
+
+/* ---- filter ---- */
+
+$("#filter").addEventListener("input", () => { applyFilter(); wireDrag(); });
+
+function applyFilter() {
+  const q = $("#filter").value.trim().toLowerCase();
+  $("#filter-note").classList.toggle("hide", q === "");
+  for (const li of document.querySelectorAll("li.judge")) {
+    const hit = q === "" || li.dataset.name.includes(q) || li.dataset.school.includes(q);
+    li.classList.toggle("filtered-out", !hit);
+  }
+  // Hide tiers with nothing left showing, so a filter doesn't leave a wall of
+  // empty tier headers.
+  for (const sec of document.querySelectorAll("#board .tier, #unranked .tier")) {
+    const any = sec.querySelector("li.judge:not(.filtered-out)");
+    sec.classList.toggle("hide", q !== "" && !any);
+  }
+  for (const gap of document.querySelectorAll(".gap")) gap.classList.toggle("hide", q !== "");
+}
+
+/* ---- export / close ---- */
+
+$("#export").addEventListener("click", () => {
+  const blob = new Blob([buildCsv()], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = S.fileName.replace(/\.csv$/i, "") + "-edited.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+$("#restart").addEventListener("click", () => {
+  for (const s of sortables) s.destroy();
+  sortables = [];
+  S = null;
+  pending = null;
+  $("#file").value = "";
+  showScreen("import");
+  listSaved();
+});
+
+/* ======================================================================
+   autosave
+   ====================================================================== */
+
+let saveTimer = null;
+function autosave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    if (!S) return;
+    // A pending "restore your saved changes?" prompt is still holding the old
+    // save hostage. Writing now would overwrite it with the fresh import.
+    if (!$("#restore-prompt").classList.contains("hide")) return;
+    const ok = store.set(sheetKey(S.fileName), {
+      fileName: S.fileName, header: S.header, width: S.width, lens: S.lens, map: S.map,
+      moved: movedCount(), savedAt: Date.now(),
+      judges: S.judges.map(j => ({
+        fields: j.fields, origRaw: j.origRaw, origRank: j.origRank, rank: j.rank,
+      })),
+    });
+    if (!ok) {
+      alertNote($("#save-note"),
+        `Couldn't autosave to this browser's storage &mdash; it may be full or blocked.
+         Your edits are fine in this tab, but export before you close it.`);
+    }
+  }, 400);
+}
+
+/* ====================================================================== */
+
+if (typeof Papa === "undefined" || typeof Sortable === "undefined") {
+  $("#libs-missing").classList.remove("hide");
+  $("#screen-import").classList.add("hide");
+} else {
+  listSaved();
+}
+</script>
 </body>
 </html>

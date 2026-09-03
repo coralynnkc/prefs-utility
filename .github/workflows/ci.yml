@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile the Python tools
+        run: python3 -m compileall -q tools
+
+      - name: Test
+        run: tests/run.sh
+
+  # The repo has to be public for GitHub Pages, and .gitignore is the only
+  # thing between that and a published read on the judge pool. Enforce it.
+  no-real-exports:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Only samples/ may contain committed CSVs
+        run: |
+          stray=$(git ls-files '*.csv' | grep -v '^samples/' || true)
+          if [ -n "$stray" ]; then
+            echo "::error::CSVs committed outside samples/:"
+            echo "$stray"
+            exit 1
+          fi
+          if git ls-files --error-unmatch data >/dev/null 2>&1; then
+            echo "::error::data/ is tracked; it holds real pref sheets"
+            exit 1
+          fi
+          echo "OK: $(git ls-files 'samples/*.csv' | wc -l) fixture CSVs, all in samples/"

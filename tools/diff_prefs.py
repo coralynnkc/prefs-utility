@@ -123,23 +123,43 @@ class Sheet:
         self.school_i = find_col(self.header, "School")
         if self.school_i is None:
             self.school_i = find_col(self.header, "Institution")
+
+        # Tabroom splits the name, but the editor lets you map a single
+        # full-name column, so accept that shape too. A full name is never
+        # split back into parts: guessing where the surname starts is exactly
+        # the kind of inference docs/csv-formats.md rules out.
+        self.full_i = None
         if self.first_i is None and self.last_i is None:
-            sys.exit(f"{path}: no First/Last columns; can't key judges. "
+            for candidate in ("Name", "Judge"):
+                self.full_i = find_col(self.header, candidate)
+                if self.full_i is not None:
+                    break
+        if self.first_i is None and self.last_i is None and self.full_i is None:
+            sys.exit(f"{path}: no First/Last or Name column; can't key judges. "
                      f"Columns: {self.header}")
         self.by_key = {self.key(r): r for r in self.rows}
+
+    @property
+    def name_mode(self):
+        return "full" if self.full_i is not None else "parts"
 
     def _at(self, row, i):
         return row[i].strip() if i is not None else ""
 
     def key(self, row):
+        if self.full_i is not None:
+            return norm(self._at(row, self.full_i))
         return f"{norm(self._at(row, self.first_i))}|{norm(self._at(row, self.last_i))}"
 
     def rank(self, row):
         return row[self.rank_i].strip()
 
     def display(self, row):
-        name = " ".join(p for p in (self._at(row, self.first_i),
-                                    self._at(row, self.last_i)) if p)
+        if self.full_i is not None:
+            name = self._at(row, self.full_i)
+        else:
+            name = " ".join(p for p in (self._at(row, self.first_i),
+                                        self._at(row, self.last_i)) if p)
         school = self._at(row, self.school_i)
         return f"{name} ({school})" if school else (name or "(unnamed judge)")
 
@@ -162,6 +182,14 @@ def main():
 
     old = Sheet(args.original, args.rank_col)
     new = Sheet(args.edited, args.rank_col)
+
+    # Keys built from a single name column and keys built from First+Last never
+    # match each other. Bailing out beats a diff claiming every judge was
+    # dropped and re-added.
+    if old.name_mode != new.name_mode:
+        sys.exit(f"{args.original} names judges by {old.name_mode} and "
+                 f"{args.edited} by {new.name_mode}; can't compare them. "
+                 f"Export both files the same way.")
 
     changed, added, dropped = [], [], []
     for k, row in new.by_key.items():
