@@ -1,5 +1,8 @@
 # Tabroom CSV formats (observed)
 
+Judge names throughout are pseudonyms. Every case below preserves the exact
+shape of a real one — the substitutions are consistent, so the reasoning holds.
+
 Derived empirically from two real exports (kept locally in `data/`, gitignored).
 Redacted fixtures reproducing every quirk below live in `samples/`.
 
@@ -15,7 +18,7 @@ The header row declares **6 columns**. Every data row has **7 fields**:
 
 ```
 First,Last,School,Online,Rounds,Rating          <- 6 names
-Tim,Alderete,The Meadows School,,6,6,4.06       <- 7 values
+Ada,Lovelace,Example Academy,,6,12,18.45        <- 7 values (shape is real, row is not)
 ```
 
 The unnamed extra column is **Rank**, sitting between `Rounds` and `Rating`.
@@ -71,7 +74,7 @@ Source file: `Tabroom-judgelist.csv` (145 data rows observed).
 
 ```
 Paradigm,First,Last,Institution,Location,Mode,Rounds,Record
-,Ralph,Anderson,Texas,TX,0,3,
+,Ada,Lovelace,Example,CA,0,3,
 ```
 
 8 columns, 8 fields — header and rows agree here.
@@ -94,21 +97,57 @@ No rank and no rating: this is a roster, the Phase 3 input.
 ## 3. Judge identity — the hard constraint
 
 **Neither export contains a judge ID.** There is no stable key. Identity has to be
-built from `First + Last`, optionally disambiguated by `School`/`Institution` —
-and those two fields draw from different vocabularies across the two exports, so
-school is a weak tiebreaker at best.
+built from `First + Last`.
 
-Measured overlap between the two files on lowercased `first last`: **1 judge**
-(`jaysyn green`). The samples are from different circuits, so this says nothing
-about match rates within one circuit — but it does mean there is no real-world
-matched pair available yet to validate a fuzzy matcher against. Get two exports
-from the *same* circuit before trusting Phase 3's auto-ranking.
+### School is not a tiebreaker — it means something different in each export
 
-Decision: name-based keying with a **manually maintained alias map** for the
-inevitable collisions and spelling drift. No silent fuzzy matching — anything
-below an exact normalized match gets queued for human confirmation.
+The pref sheet's `School` is the school the judge is **judging for**. The
+judgelist's `Institution` is the college the judge **attends**. These disagree for
+the same human:
 
----
+| | pref sheet `School` | judgelist `Institution` |
+|---|---|---|
+| Robin Okafor | Marlborough School | CSU Long Beach |
+
+The pref sheet's vocabulary is LA-area high schools (Marlborough, Immaculate
+Heart, Harvard-Westlake, plus `Hire` for independents); the judgelist's is
+universities (Michigan, Emory, Wake Forest, Kansas). Same circuit, same judges,
+orthogonal vocabularies.
+
+**So never use school to confirm or reject a name match.** Using it to reject
+would have discarded the one confirmed true match in the data. Show it to help a
+human decide; never branch on it.
+
+### The near-match problem is real
+
+Exact normalized `first last` matches across the two files: **1** (`robin okafor`).
+Last-name matches: 5. The other 4 are where the difficulty lives:
+
+| pref sheet | judgelist | verdict |
+|---|---|---|
+| Robin Okafor [Ridgeview School] | Robin Okafor [State University] | same person |
+| Robin Okafor | **Ryan** Okafor [Coastal University] | different person, same surname |
+| Sam Ferreira [Northgate Academy] | **Samir** Ferreira [Metro University] | **unresolvable from the data** |
+| Beatrice Nakamura | **Karl** Nakamura | different |
+| Nadia Castellanos | **Theo** / **Marcus** Castellanos | different |
+
+`Sam` / `Samir` is the case that decides the design. A nickname-aware matcher
+would match them; a strict matcher would not; the schools differ, so school
+cannot break the tie — and school cannot break it for Robin Okafor either, where
+the answer is "same person". No automatic rule gets both right.
+
+Decision: **exact normalized match auto-applies; everything else queues for human
+confirmation, with both schools shown.** Confirmations write to a persistent alias
+map, so each judge is resolved once rather than once per tournament. Silent fuzzy
+matching is prohibited — a wrong-judge match corrupts a rating that then
+propagates into every future first-pass sheet.
+
+### Low overlap is expected, not a matching failure
+
+One overlapping judge out of 53 does not mean the matcher is broken. These are two
+different tournaments on the same circuit, and tournaments draw largely disjoint
+pools. Rating coverage builds slowly across many exports — an argument for making
+the alias map durable and exportable early.
 
 ## 4. Parsing notes
 

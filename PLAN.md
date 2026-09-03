@@ -71,7 +71,8 @@ in Tabroom.
 Persistent, cross-tournament, keyed by normalized name + alias map.
 
 ```
-judges: { key: { first, last, schools[], rating, comparisons, last_seen } }
+judges:  { key: { first, last, schools[], rating, comparisons, last_seen } }
+aliases: { observed_name_key: judge_key }   // human-confirmed, never inferred
 ```
 
 - Pairwise: "prefer A or B for your side?" Elo update `R' = R + K(S - E)`,
@@ -79,6 +80,8 @@ judges: { key: { first, last, schools[], rating, comparisons, last_seen } }
 - Pair selection prioritizes low-comparison judges, then near-equal ratings.
 - Realistically you will do tens, not hundreds, of comparisons. Ratings will stay
   noisy — treat output as a *starting position*, never a final sheet.
+- The alias map is the asset that compounds here, more than the ratings: it is
+  hand-verified and expensive to rebuild. Export it alongside the ratings.
 
 **Roster → first pass**
 1. Import roster CSV (`Tabroom-judgelist.csv` shape).
@@ -90,9 +93,22 @@ judges: { key: { first, last, schools[], rating, comparisons, last_seen } }
    worse error than one you had to place by hand.
 5. Output becomes the rank column feeding Phase 1.
 
-**Validation gap:** the two exports on hand share exactly one judge, so there is
-no matched pair to test the matcher against. Get two exports from the same
-circuit before trusting step 2.
+**The matcher's hard cases are already visible** in the two exports on hand — same
+circuit, but only one exact name match out of 53 (tournaments draw disjoint pools,
+so low overlap is normal, not a bug). Four more share a surname, and they are the
+design test:
+
+- `Robin Okafor [Ridgeview School]` vs `Robin Okafor [State University]` — the same
+  person, listed under the school they judge for in one export and the college they
+  attend in the other.
+- `Sam Ferreira [Northgate Academy]` vs `Samir Ferreira [Metro University]` — unresolvable from
+  the data alone.
+- `Robin Okafor` vs `Ryan Okafor` — a surname collision that must not merge.
+
+So **school can never confirm or reject a match**: it disagrees with itself for
+Robin Okafor, the one judge we know is a true match. Show both schools in the
+confirmation queue as context for the human; never branch on them. And no
+nickname expansion — it would merge `Sam`/`Samir` on a guess.
 
 ---
 

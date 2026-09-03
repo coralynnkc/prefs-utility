@@ -30,7 +30,12 @@ pref sheets silently.
    a school name containing a comma would break `split(',')`.
 6. **No silent fuzzy name matching.** There is no judge ID in any export. Exact
    normalized name matches auto-apply; anything less gets queued for human
-   confirmation. Wrong-judge matches are worse than unmatched judges.
+   confirmation, written to a persistent alias map. Wrong-judge matches are worse
+   than unmatched judges — a bad merge corrupts a rating forever.
+7. **Never branch on school to confirm or reject a name match.** The pref sheet's
+   `School` is who the judge judges for; the judgelist's `Institution` is where
+   they study. They disagree for the same person (Robin Okafor: Ridgeview School
+   vs State University). Display it as context for a human; never decide on it.
 
 ## Conventions
 
