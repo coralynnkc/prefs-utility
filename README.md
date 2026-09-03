@@ -22,7 +22,8 @@ and roster first-pass are not. See [PLAN.md](PLAN.md) for the build order and
 ## Layout
 
 ```
-index.html            the app (single page, no build step, no backend)
+index.html            the app: markup + the one inline module script
+app.css               its styles (a <link>; see the comment at its head)
 tools/diff_prefs.py   old vs. new rank diff -> Tabroom re-entry checklist
 tests/                node + unittest suites, run by tests/run.sh
 docs/csv-formats.md   what Tabroom's exports actually contain

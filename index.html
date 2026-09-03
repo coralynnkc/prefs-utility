@@ -8,10 +8,18 @@
 <!--
   Phase 1: import a Tabroom pref-sheet CSV, re-rank it, export it back.
 
-  Everything lives in this one file on purpose. The app has to work both from
-  GitHub Pages and from a plain `file://` open, and `file://` blocks module
-  *imports* between local files (though an inline `type="module"` script is
-  fine). One file also means no build step, which is the point.
+  The *script* lives in this file on purpose. The app has to work both from
+  GitHub Pages and from a plain `file://` open, and there is no build step.
+  Measured in Chrome from a file:// open:
+
+      <link rel=stylesheet href=app.css>   loads
+      <script src=app.js>       (classic)  loads
+      <script type=module src=app.js>      BLOCKED (CORS, origin null)
+      import "./app.js"  inside a module   BLOCKED
+
+  So the styles are free to live in app.css, and do. The script could only be
+  externalised by giving up `type="module"` for a classic script, which buys
+  nothing but moved lines -- so it stays inline, right here.
 
   The script below is split by `core:start` / `core:end` markers. Everything
   between them is pure -- no DOM, no localStorage -- and tests/harness.mjs
@@ -28,152 +36,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
 
-<style>
-  :root {
-    color-scheme: light dark;
-    --bg: #fbfbfa;
-    --panel: #fff;
-    --ink: #1b1b1a;
-    --muted: #6b6b68;
-    --line: #dedcd7;
-    --accent: #2f6f4f;
-    --accent-soft: #e6f0e9;
-    --warn: #8a5a00;
-    --warn-soft: #fdf3df;
-    --moved: #8a3a00;
-    --moved-soft: #fdeee2;
-    --radius: 8px;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #17181a; --panel: #1f2124; --ink: #e8e6e2; --muted: #9a9893;
-      --line: #34373b; --accent: #7fc39c; --accent-soft: #1e2f27;
-      --warn: #e3b464; --warn-soft: #302716;
-      --moved: #f0a06a; --moved-soft: #33221a;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: var(--bg); color: var(--ink);
-    margin: 0; padding: 0 1rem 6rem;
-  }
-  .wrap { max-width: 62rem; margin: 0 auto; }
-  h1 { font-size: 1.3rem; margin: 1.6rem 0 .2rem; }
-  h2 { font-size: 1.05rem; margin: 1.8rem 0 .5rem; }
-  p.sub { color: var(--muted); margin: 0 0 1.4rem; }
-  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .87em; }
-
-  button {
-    font: inherit; padding: .4rem .8rem; border-radius: 6px;
-    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-    cursor: pointer;
-  }
-  button:hover:not(:disabled) { border-color: var(--muted); }
-  button:disabled { opacity: .45; cursor: default; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  @media (prefers-color-scheme: dark) { button.primary { color: #10241a; } }
-  input[type=search], input[type=number], select {
-    font: inherit; padding: .35rem .5rem; border-radius: 6px;
-    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-  }
-
-  .panel {
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 1rem 1.1rem;
-  }
-  .note {
-    border-left: 3px solid var(--warn); background: var(--warn-soft);
-    color: var(--ink); padding: .7rem .9rem; border-radius: 0 6px 6px 0;
-    margin: 1rem 0; font-size: .92rem;
-  }
-  .note.info { border-left-color: var(--accent); background: var(--accent-soft); }
-  .note .row { display: flex; gap: .5rem; align-items: center; margin-top: .6rem; flex-wrap: wrap; }
-  .hide { display: none !important; }
-
-  /* ---- import ---------------------------------------------------------- */
-  #drop {
-    border: 2px dashed var(--line); border-radius: var(--radius);
-    padding: 2.4rem 1rem; text-align: center; color: var(--muted);
-    background: var(--panel);
-  }
-  #drop.over { border-color: var(--accent); background: var(--accent-soft); }
-  #resume-list { list-style: none; padding: 0; margin: .6rem 0 0; }
-  #resume-list li {
-    display: flex; gap: .6rem; align-items: center; justify-content: space-between;
-    padding: .45rem 0; border-top: 1px solid var(--line);
-  }
-
-  /* ---- mapper ---------------------------------------------------------- */
-  table.map { width: 100%; border-collapse: collapse; font-size: .92rem; }
-  table.map th, table.map td {
-    text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--line);
-    vertical-align: top;
-  }
-  table.map th { color: var(--muted); font-weight: 600; font-size: .82rem;
-                 text-transform: uppercase; letter-spacing: .03em; }
-  td.samples { color: var(--muted); }
-  td.samples span { display: inline-block; margin-right: .55rem; }
-  .unnamed { color: var(--warn); font-style: italic; }
-  .shifted-name { color: var(--muted); text-decoration: line-through; }
-
-  /* ---- editor ---------------------------------------------------------- */
-  #bar {
-    position: sticky; top: 0; z-index: 20; background: var(--bg);
-    padding: .7rem 0; border-bottom: 1px solid var(--line);
-    display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
-  }
-  #bar .grow { flex: 1 1 8rem; }
-  #counts { color: var(--muted); font-size: .9rem; }
-  #counts b { color: var(--moved); }
-
-  #board { margin-top: 1rem; }
-  .tier {
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: var(--radius); overflow: hidden;
-  }
-  .tier-head {
-    display: flex; align-items: center; gap: .55rem;
-    padding: .35rem .6rem; border-bottom: 1px solid var(--line);
-    background: color-mix(in srgb, var(--ink) 3%, var(--panel));
-  }
-  .tier-head label { color: var(--muted); font-size: .8rem; text-transform: uppercase;
-                     letter-spacing: .04em; }
-  .tier-rank { width: 5rem; }
-  .tier-count { color: var(--muted); font-size: .85rem; margin-left: auto; }
-
-  ul.judges { list-style: none; margin: 0; padding: .25rem; min-height: 1.9rem; }
-  li.judge {
-    display: flex; gap: .55rem; align-items: baseline; flex-wrap: wrap;
-    padding: .35rem .5rem; border-radius: 6px; cursor: grab;
-  }
-  li.judge:focus-visible, li.judge:focus {
-    outline: 2px solid var(--accent); outline-offset: -2px;
-  }
-  li.judge:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
-  li.judge.moved { background: var(--moved-soft); }
-  .jname { font-weight: 600; }
-  .jschool { color: var(--muted); font-size: .9rem; }
-  .chips { display: flex; gap: .4rem; flex-wrap: wrap; margin-left: auto; }
-  .chip {
-    color: var(--muted); font-size: .78rem;
-    border: 1px solid var(--line); border-radius: 999px; padding: 0 .5rem;
-  }
-  .chip.readonly { font-style: italic; }
-  .badge {
-    font-size: .78rem; color: var(--moved); border: 1px solid var(--moved);
-    border-radius: 999px; padding: 0 .5rem; cursor: pointer;
-  }
-
-  .gap { height: 10px; margin: 2px 0; border-radius: 5px; }
-  #board.dragging .gap { height: 24px; border: 1px dashed var(--line); }
-  #board.dragging .gap:hover { border-color: var(--accent); background: var(--accent-soft); }
-  .sortable-ghost { opacity: .35; }
-
-  #unranked { margin-top: 1.4rem; }
-  #unranked .tier-head { background: var(--warn-soft); }
-  .filtered-out { display: none; }
-</style>
+<link rel="stylesheet" href="app.css">
 </head>
 <body>
 <div class="wrap">

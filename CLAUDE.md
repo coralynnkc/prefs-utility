@@ -7,8 +7,8 @@ differs from what their headers claim.
 ## What this is
 
 A browser-only utility for editing Tabroom judge prefs. No backend, no build
-step, no framework. `index.html` is the whole app; open it as a file or serve it
-statically. Deployment target is GitHub Pages.
+step, no framework. `index.html` plus `app.css` is the whole app; open it as a
+file or serve it statically. Deployment target is GitHub Pages.
 
 ## Non-negotiable data rules
 
@@ -61,8 +61,12 @@ a fixture under `tests/` would silently never be committed.
 
 - Vanilla JS, ES modules, no transpile. Libraries via CDN `<script>` only when
   they earn their place (PapaParse for CSV, SortableJS for drag). The app is one
-  inline `type="module"` script: `file://` blocks imports between local files,
-  and it has to open from disk as well as from Pages.
+  inline `type="module"` script, and stays one: it has to open from disk as
+  well as from Pages, and measured in Chrome from a `file://` open, a
+  `<link rel=stylesheet>` and a classic `<script src>` both load while a
+  `<script type=module src>` and a local `import` are both blocked by CORS.
+  So styles live in `app.css`, but externalising the script would mean giving
+  up `type="module"` for a classic script and moving lines for no gain.
 - `localStorage` keys are namespaced `prefsutil:` — GitHub Pages puts every
   `<user>.github.io` project on one shared origin.
 - Python tooling in `tools/` is stdlib-only and CLI-shaped, one file per job.
