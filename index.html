@@ -99,8 +99,8 @@
   <div id="save-note" class="note hide"></div>
 
   <p class="sub" style="margin:.9rem 0 0">
-    Drag a judge onto another row to share its rank, or onto one of the dashed
-    lines that open up between rows to give them a rank of their own. Keyboard:
+    Drag a judge onto another row to share its rank, or into the lane between
+    two rows to give them a rank of their own. Keyboard:
     <code>&uarr;</code>/<code>&darr;</code> joins the tier above or below,
     <code>&#8679;&uarr;</code>/<code>&#8679;&darr;</code> splits into a new tier.
     Untouched tiers keep their original rank, gaps and all.
@@ -789,17 +789,26 @@ function wireDrag() {
   sortables = [];
   const opts = {
     group: "judges",
-    animation: 130,
+    animation: 120,
     easing: "cubic-bezier(.2,.7,.3,1)",
     disabled: $("#filter").value.trim() !== "",
-    emptyInsertThreshold: 10,
-    swapThreshold: 0.7,
+    // The gaps between tiers are a 14px lane and stay that size all through a
+    // drag (see app.css). This threshold is what makes them aimable: Sortable
+    // counts the pointer as inside an empty list when it is within this many
+    // pixels of the list's box, so the lane catches a ~40px band without the
+    // board reflowing under the pointer.
+    emptyInsertThreshold: 13,
+    // A judge only ever joins a tier -- order inside one carries no meaning --
+    // so require the pointer to be well inside a row before displacing it.
+    // The default 1.0 re-sorted the target tier on every pixel of travel.
+    swapThreshold: 0.65,
+    direction: "vertical",
     // Drag the element ourselves rather than handing the browser an HTML5 drag
     // image: the native one lags the pointer, and it would be clipped anyway by
     // the board's `overflow: hidden`. fallbackOnBody lifts the clone clear of it.
     forceFallback: true,
     fallbackOnBody: true,
-    fallbackTolerance: 4,
+    fallbackTolerance: 6,
     fallbackClass: "drag-fallback",
     ghostClass: "drag-ghost",
     chosenClass: "drag-chosen",
@@ -812,8 +821,10 @@ function wireDrag() {
     scroll: true,
     scrollSensitivity: 90,
     scrollSpeed: 14,
-    onStart: () => $("#board").classList.add("dragging"),
-    onEnd: () => $("#board").classList.remove("dragging"),
+    // On <body>, not #board: the unranked list is a sibling of the board, and
+    // scoping the drag state to #board left it with no drop feedback at all.
+    onStart: () => document.body.classList.add("dragging"),
+    onEnd: () => document.body.classList.remove("dragging"),
   };
 
   for (const ul of document.querySelectorAll("ul.judges")) {
@@ -945,7 +956,19 @@ document.addEventListener("keydown", e => {
 
 /* ---- filter ---- */
 
-$("#filter").addEventListener("input", () => { applyFilter(); wireDrag(); });
+$("#filter").addEventListener("input", () => { applyFilter(); setDragEnabled(); });
+
+/**
+ * Flip the existing Sortable instances on or off in place.
+ *
+ * Drag has to be off while a filter is active -- half the tiers you would drop
+ * into are hidden -- but rebuilding every instance on each keystroke made
+ * typing in the filter box stutter. Sortable can be toggled without that.
+ */
+function setDragEnabled() {
+  const off = $("#filter").value.trim() !== "";
+  for (const s of sortables) s.option("disabled", off);
+}
 
 function applyFilter() {
   const q = $("#filter").value.trim().toLowerCase();

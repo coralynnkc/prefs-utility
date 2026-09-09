@@ -10,32 +10,40 @@
 
 :root {
   color-scheme: light dark;
-  --bg: #f6f6f4;
+  --bg: #f3f4f7;
   --panel: #fff;
-  --panel-2: #faf9f7;
-  --ink: #1b1b1a;
-  --muted: #6b6b68;
-  --faint: #9b9a95;
-  --line: #e3e1db;
-  --line-strong: #cbc8c0;
-  --accent: #2f6f4f;
-  --accent-soft: #e6f0e9;
+  --panel-2: #f7f8fa;
+  --ink: #14161a;
+  --muted: #63666e;
+  --faint: #9599a2;
+  --line: #e3e5ea;
+  --line-strong: #c8cbd3;
+  --accent: #2563eb;
+  --accent-ink: #1d4ed8;
+  --accent-soft: #e8efff;
+  --accent-line: #a9c4fb;
+  --on-accent: #fff;
   --warn: #8a5a00;
   --warn-soft: #fdf3df;
-  --moved: #9c4512;
-  --moved-soft: #fceee4;
-  --radius: 10px;
-  --shadow: 0 1px 1px rgba(24, 24, 20, .04), 0 2px 10px rgba(24, 24, 20, .05);
+  --moved: #a1440d;
+  --moved-soft: #fdeee2;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(18, 20, 26, .05), 0 6px 20px -8px rgba(18, 20, 26, .12);
+  --shadow-lift: 0 12px 28px -10px rgba(18, 20, 26, .35);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16171a; --panel: #1e2023; --panel-2: #24262a;
-    --ink: #e8e6e2; --muted: #9a9893; --faint: #74736f;
-    --line: #32353a; --line-strong: #464a50;
-    --accent: #7fc39c; --accent-soft: #1e2f27;
-    --warn: #e3b464; --warn-soft: #302716;
-    --moved: #f0a06a; --moved-soft: #33221a;
-    --shadow: 0 1px 1px rgba(0, 0, 0, .3), 0 2px 12px rgba(0, 0, 0, .25);
+    --bg: #101216; --panel: #191c21; --panel-2: #20242a;
+    --ink: #e9eaee; --muted: #9ba0aa; --faint: #6f747e;
+    --line: #2b2f36; --line-strong: #414651;
+    --accent: #5b9bff; --accent-ink: #8ab6ff;
+    --accent-soft: #16233a; --accent-line: #2e4a7a;
+    --on-accent: #0b1830;
+    --warn: #e3b464; --warn-soft: #2e2616;
+    --moved: #f0a06a; --moved-soft: #32211a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -10px rgba(0, 0, 0, .6);
+    --shadow-lift: 0 14px 30px -10px rgba(0, 0, 0, .7);
   }
 }
 * { box-sizing: border-box; }
@@ -45,37 +53,52 @@ body {
   margin: 0; padding: 0 1.2rem 6rem;
   -webkit-font-smoothing: antialiased;
 }
-.wrap { max-width: 66rem; margin: 0 auto; }
-h1 { font-size: 1.35rem; letter-spacing: -.01em; margin: 1.8rem 0 .25rem; }
-h2 { font-size: 1.05rem; margin: 1.8rem 0 .5rem; }
+.wrap { max-width: 68rem; margin: 0 auto; }
+h1 {
+  font-size: 1.45rem; letter-spacing: -.018em; margin: 2rem 0 .3rem;
+  display: flex; align-items: center; gap: .55rem;
+}
+h1::before {
+  content: ""; width: .55rem; height: 1.3rem; border-radius: 3px;
+  background: linear-gradient(var(--accent), var(--accent-ink));
+}
+h2 { font-size: 1.05rem; letter-spacing: -.01em; margin: 1.8rem 0 .5rem; }
 p.sub { color: var(--muted); margin: 0 0 1.4rem; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .87em; }
 code {
   background: color-mix(in srgb, var(--ink) 7%, transparent);
   border-radius: 4px; padding: .05em .3em;
 }
+p.sub code {
+  background: var(--panel); border: 1px solid var(--line-strong);
+  box-shadow: 0 1px 0 var(--line-strong); color: var(--ink);
+  border-radius: 5px; padding: .1em .35em;
+}
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 button {
-  font: inherit; padding: .38rem .8rem; border-radius: 7px;
+  font: inherit; font-weight: 500; padding: .4rem .85rem; border-radius: 8px;
   border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink);
-  cursor: pointer; transition: background .12s, border-color .12s;
+  cursor: pointer; transition: background .12s, border-color .12s, box-shadow .12s;
 }
 button:hover:not(:disabled) { background: var(--panel-2); border-color: var(--muted); }
+button:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
 button:disabled { opacity: .4; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 88%, black); border-color: var(--accent);
+button.primary {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
 }
-@media (prefers-color-scheme: dark) {
-  button.primary { color: #10241a; }
-  button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, white); }
+button.primary:hover:not(:disabled) {
+  background: var(--accent-ink); border-color: var(--accent-ink);
 }
 input[type=search], input[type=number], select {
-  font: inherit; padding: .35rem .5rem; border-radius: 7px;
+  font: inherit; padding: .38rem .55rem; border-radius: 8px;
   border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink);
+  transition: border-color .12s, box-shadow .12s;
 }
-input[type=search] { min-width: 11rem; }
+input[type=search]:focus-visible, input[type=number]:focus-visible, select:focus-visible {
+  outline: none; border-color: var(--accent); box-shadow: var(--ring);
+}
+input[type=search] { min-width: 12rem; }
 
 .panel {
   background: var(--panel); border: 1px solid var(--line);
@@ -83,7 +106,7 @@ input[type=search] { min-width: 11rem; }
 }
 .note {
   border-left: 3px solid var(--warn); background: var(--warn-soft);
-  color: var(--ink); padding: .7rem .9rem; border-radius: 0 7px 7px 0;
+  color: var(--ink); padding: .7rem .9rem; border-radius: 0 8px 8px 0;
   margin: 1rem 0; font-size: .92rem;
 }
 .note.info { border-left-color: var(--accent); background: var(--accent-soft); }
@@ -93,10 +116,14 @@ input[type=search] { min-width: 11rem; }
 /* ---- import ---------------------------------------------------------- */
 #drop {
   border: 2px dashed var(--line-strong); border-radius: var(--radius);
-  padding: 2.6rem 1rem; text-align: center; color: var(--muted);
-  background: var(--panel); transition: border-color .12s, background .12s;
+  padding: 2.8rem 1rem; text-align: center; color: var(--muted);
+  background: var(--panel); box-shadow: var(--shadow);
+  transition: border-color .12s, background .12s, box-shadow .12s;
 }
-#drop.over { border-color: var(--accent); background: var(--accent-soft); }
+#drop.over {
+  border-color: var(--accent); background: var(--accent-soft);
+  box-shadow: var(--ring);
+}
 #resume-list { list-style: none; padding: 0; margin: .6rem 0 0; }
 #resume-list li {
   display: flex; gap: .6rem; align-items: center; justify-content: space-between;
@@ -110,6 +137,7 @@ table.map th, table.map td {
   vertical-align: top;
 }
 table.map tr:last-child td { border-bottom: 0; }
+table.map tr:hover td { background: var(--panel-2); }
 table.map th { color: var(--muted); font-weight: 600; font-size: .82rem;
                text-transform: uppercase; letter-spacing: .03em; }
 td.samples { color: var(--muted); }
@@ -127,9 +155,9 @@ td.samples span { display: inline-block; margin-right: .55rem; }
 */
 #bar {
   position: sticky; top: 0; z-index: 20;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
-  padding: .65rem 0; margin-bottom: .9rem; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(10px);
+  padding: .7rem 0; margin-bottom: .9rem; border-bottom: 1px solid var(--line);
   display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
 }
 #bar .grow { flex: 1 1 4rem; }
@@ -150,44 +178,56 @@ td.samples span { display: inline-block; margin-right: .55rem; }
 }
 #board { margin-top: 1rem; }
 
-.tier { display: grid; grid-template-columns: 4.25rem minmax(0, 1fr); }
+.tier { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); }
 .tier + .tier, .gap + .tier { border-top: 1px solid var(--line); }
 #board > .gap:first-child + .tier { border-top: 0; }
 
 .tier-head {
-  display: flex; flex-direction: column; align-items: center; gap: .05rem;
-  padding: .22rem .3rem; background: var(--panel-2);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .05rem; padding: .22rem .3rem; background: var(--panel-2);
   border-right: 1px solid var(--line);
 }
 input.tier-rank {
   width: 100%; padding: .08rem .2rem; text-align: center;
-  font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums;
+  font-size: 1rem; font-weight: 650; font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
   border-color: transparent; background: transparent; border-radius: 6px;
   appearance: textfield;
 }
 input.tier-rank::-webkit-outer-spin-button,
 input.tier-rank::-webkit-inner-spin-button { appearance: none; margin: 0; }
 .tier:hover input.tier-rank { border-color: var(--line-strong); background: var(--panel); }
-input.tier-rank:focus { border-color: var(--accent); background: var(--panel); }
-.tier-count { font-size: .7rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+input.tier-rank:focus-visible {
+  outline: none; border-color: var(--accent); background: var(--panel);
+  box-shadow: var(--ring);
+}
+.tier-count {
+  font-size: .68rem; font-weight: 600; color: var(--accent-ink);
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+}
 .gutter-label { color: var(--warn); font-weight: 600; }
 .unranked-tier .tier-head { background: var(--warn-soft); }
 
-ul.judges { list-style: none; margin: 0; padding: .12rem; min-height: 1.85rem; }
+ul.judges { list-style: none; margin: 0; padding: .18rem; min-height: 2rem; }
 li.judge {
   display: flex; align-items: center; gap: .5rem; min-width: 0;
-  padding: .18rem .45rem; border-radius: 6px; cursor: grab;
-  line-height: 1.4;
+  padding: .22rem .45rem; border-radius: 7px; cursor: grab;
+  line-height: 1.4; touch-action: manipulation;
+  transition: background .1s, box-shadow .1s;
 }
 li.judge:active { cursor: grabbing; }
 li.judge::before {
-  content: "\283F"; flex: 0 0 auto; color: transparent;
-  font-size: .8rem; line-height: 1;
+  content: "\283F"; flex: 0 0 auto; color: color-mix(in srgb, var(--faint) 40%, transparent);
+  font-size: .8rem; line-height: 1; transition: color .1s;
 }
-li.judge:hover::before { color: var(--faint); }
-li.judge:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+li.judge:hover::before { color: var(--accent); }
+li.judge:hover { background: var(--accent-soft); }
 li.judge.moved { background: var(--moved-soft); }
-li.judge:focus-visible, li.judge:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+li.judge.moved:hover { background: color-mix(in srgb, var(--moved) 16%, transparent); }
+li.judge:focus-visible, li.judge:focus {
+  outline: none; box-shadow: inset 0 0 0 2px var(--accent);
+  background: var(--accent-soft);
+}
 .jname { font-weight: 600; white-space: nowrap; }
 .jschool {
   color: var(--muted); font-size: .88rem;
@@ -205,31 +245,45 @@ li.judge:focus-visible, li.judge:focus { outline: 2px solid var(--accent); outli
   border: 1px solid color-mix(in srgb, var(--moved) 45%, transparent);
   border-radius: 999px; padding: .05rem .45rem; cursor: pointer;
 }
-.badge:hover { background: color-mix(in srgb, var(--moved) 12%, transparent); }
+.badge:hover { background: color-mix(in srgb, var(--moved) 18%, transparent); }
 
 /* ---- drag ----
 
-   Resting gaps are a hairline of dead space. They only become drop targets --
-   tall, labelled and obvious -- while something is actually being dragged,
-   because that is the one moment they mean anything.
+   Gap geometry is FIXED. The gaps between tiers are the same height whether or
+   not a drag is in progress, and only their paint changes -- because a board
+   that grows by a lane per tier the moment you pick a row up yanks the whole
+   list out from under the pointer, which is exactly what made drags feel like
+   they fought back. The lane is small on purpose; SortableJS's
+   emptyInsertThreshold widens the *hit* area without touching layout.
 */
-.gap { height: 4px; }
-#board.dragging .gap {
-  min-height: 28px; margin: 3px .4rem; display: flex;
-  align-items: center; justify-content: center;
-  border: 1px dashed var(--line-strong); border-radius: 7px;
+.gap { height: 14px; position: relative; }
+.gap::before {
+  content: ""; position: absolute; left: .5rem; right: .5rem; top: 50%;
+  height: 0; border-top: 1px dashed transparent; border-radius: 2px;
+  transform: translateY(-50%); transition: border-color .12s;
 }
-#board.dragging .gap::after {
-  content: "drop here for a rank of its own";
-  font-size: .72rem; color: var(--faint);
+body.dragging .gap::before { border-color: var(--accent-line); }
+body.dragging .gap::after {
+  content: "own rank"; position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent-ink); background: var(--panel);
+  padding-inline: .5rem; width: max-content; margin-inline: auto;
+  pointer-events: none;
 }
 /* Sortable moves the real element into whatever container the pointer is over,
    so "this gap holds the item" is the live hover state. */
-#board.dragging .gap:has(li.judge) {
-  border-style: solid; border-color: var(--accent); background: var(--accent-soft);
+body.dragging .gap:has(li.judge) {
+  height: auto; margin: 3px .4rem; padding: 2px;
+  border: 1px solid var(--accent); border-radius: 8px;
+  background: var(--accent-soft); box-shadow: var(--ring);
 }
-#board.dragging .gap:has(li.judge)::after { content: none; }
-#board.dragging ul.judges:has(.drag-ghost) { background: var(--accent-soft); }
+body.dragging .gap:has(li.judge)::before,
+body.dragging .gap:has(li.judge)::after { content: none; }
+body.dragging ul.judges:has(.drag-ghost) {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 2px var(--accent-line);
+}
 
 .drag-ghost { background: var(--accent-soft) !important; }
 .drag-ghost > * { visibility: hidden; }
@@ -238,10 +292,16 @@ li.judge:focus-visible, li.judge:focus { outline: 2px solid var(--accent); outli
 .drag-fallback {
   list-style: none; opacity: 1 !important; cursor: grabbing;
   background: var(--panel) !important;
-  border: 1px solid var(--accent); border-radius: 7px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
+  border: 1px solid var(--accent); border-radius: 8px;
+  box-shadow: var(--shadow-lift);
 }
-.drag-fallback::before { color: var(--faint) !important; }
+.drag-fallback::before { color: var(--accent) !important; }
+/* Nothing on the board should answer to the pointer mid-drag except as a drop
+   target: hover paint on rows you are merely passing over reads as a drop
+   that already happened. */
+body.dragging li.judge:not(.drag-fallback):hover { background: none; }
+body.dragging li.judge.moved:not(.drag-fallback):hover { background: var(--moved-soft); }
+body.dragging { cursor: grabbing; user-select: none; }
 
 #unranked { margin-top: 1.4rem; }
 .filtered-out { display: none; }
