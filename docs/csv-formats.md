@@ -62,10 +62,24 @@ for judges the user actually moved.
 ### Rating is derived, not authored
 
 `Rating` is monotone in rank and identical within a tie group (rank 20 → 39.48 for
-all three judges holding it). It is a Tabroom-computed percentile over the *full*
-tournament pool, not over the exported rows — rank 80 → 94.10 does not divide out
-of 53. **Treat `Rating` as read-only.** Carry it through the export unchanged and
-never recompute it; the numbers are Tabroom's to assign.
+all three judges holding it). It is a **rounds-weighted percentile of the sheet
+itself**:
+
+```
+rating = (1 + Rounds of every judge ranked strictly better)
+         / (Rounds of every judge on the sheet, unranked included) × 100
+```
+
+Checked against the real 53-judge export: total Rounds is 271 (the one unranked
+judge's 2 included), and the formula reproduces all 53 ratings to the hundredth.
+(An earlier note here claimed it was over the full tournament pool because
+rank 80 → 94.10 does not divide out of 53 judges. It divides out of 271 rounds.)
+A 0-round judge adds nothing, which is why ranks 1 and 2 both read 0.37.
+
+**The exported cell is still read-only.** Carry it through unchanged; Tabroom
+recomputes its own once the new ranks are entered. The editor shows a live
+recomputation for display, and only when the formula reproduces every imported
+rating on that sheet.
 
 ---
 

@@ -28,6 +28,12 @@
   --moved: #a1440d;
   --moved-soft: #fdeee2;
   --flag: #c2261d;
+  --strike: #c2261d;
+  /* Tier tint. Each tier sets --h (its hue, green 140 to red 0) from where it
+     stands in the pool; these turn that one number into paint. */
+  --tint-l: 94%; --tint-s: 70%;
+  --edge-l: 44%; --edge-s: 62%;
+  --tone-l: 30%; --tone-s: 60%;
   --radius: 12px;
   --shadow: 0 1px 2px rgba(18, 20, 26, .05), 0 6px 20px -8px rgba(18, 20, 26, .12);
   --shadow-lift: 0 12px 28px -10px rgba(18, 20, 26, .35);
@@ -44,6 +50,10 @@
     --warn: #e3b464; --warn-soft: #2e2616;
     --moved: #f0a06a; --moved-soft: #32211a;
     --flag: #ff6b61;
+    --strike: #ff6b61;
+    --tint-l: 17%; --tint-s: 32%;
+    --edge-l: 50%; --edge-s: 55%;
+    --tone-l: 74%; --tone-s: 60%;
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -10px rgba(0, 0, 0, .6);
     --shadow-lift: 0 14px 30px -10px rgba(0, 0, 0, .7);
   }
@@ -166,6 +176,11 @@ td.samples span { display: inline-block; margin-right: .55rem; }
 #filename { font-size: .92rem; }
 #counts { color: var(--muted); font-size: .9rem; white-space: nowrap; }
 #counts b { color: var(--moved); }
+label.strike {
+  display: inline-flex; align-items: center; gap: .3rem;
+  color: var(--muted); font-size: .88rem; white-space: nowrap;
+}
+label.strike input { width: 4.2rem; }
 
 .section-cap {
   display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap;
@@ -181,6 +196,19 @@ td.samples span { display: inline-block; margin-right: .55rem; }
 #board { margin-top: 1rem; }
 
 .tier { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); }
+.tier[style*="--h"] .tier-head {
+  background: hsl(var(--h) var(--tint-s) var(--tint-l));
+  box-shadow: inset 4px 0 0 hsl(var(--h) var(--edge-s) var(--edge-l));
+}
+.tier-rating {
+  font-size: .7rem; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: hsl(var(--h, 220) var(--tone-s) var(--tone-l));
+}
+.tier-rating:empty { display: none; }
+/* Past the strike line: the gutter goes red and the judges recede, so the
+   line reads at a glance without hiding anyone you might still want to move. */
+.tier.struck ul.judges { background: color-mix(in srgb, var(--strike) 5%, transparent); }
+.tier.struck .jname { color: var(--muted); }
 .tier + .tier, .gap + .tier { border-top: 1px solid var(--line); }
 #board > .gap:first-child + .tier { border-top: 0; }
 
@@ -248,6 +276,8 @@ li.judge:focus-visible, li.judge:focus {
   border-radius: 999px; padding: .05rem .45rem; cursor: pointer;
 }
 .badge:hover { background: color-mix(in srgb, var(--moved) 18%, transparent); }
+.badge.bumped { color: var(--faint); border-color: var(--line-strong); border-style: dashed; }
+.badge.bumped:hover { background: var(--panel-2); }
 
 /* ---- flags ----
 
@@ -315,6 +345,15 @@ button.link:hover:not(:disabled) { background: none; color: var(--accent-ink); t
   transform: translateY(-50%); transition: border-color .12s;
 }
 body.dragging .gap::before { border-color: var(--accent-line); }
+body:not(.dragging) .gap.strike-line::before {
+  border-top: 2px solid var(--strike); left: 0; right: 0;
+}
+body:not(.dragging) .gap.strike-line::after {
+  content: attr(data-label); position: absolute; top: 50%; right: .8rem;
+  transform: translateY(-50%); padding-inline: .4rem;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--strike); background: var(--panel);
+}
 body.dragging .gap::after {
   content: "own rank"; position: absolute; inset: 0;
   display: grid; place-items: center;
