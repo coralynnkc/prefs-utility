@@ -15,8 +15,9 @@ generates a first-pass ranking for a new tournament roster.
 
 ## Status
 
-Steps 1–4 work: the editor and the diff script are both built. The Elo ratings
-and roster first-pass are not. See [PLAN.md](PLAN.md) for the build order and
+Steps 1–4 work: the editor and the diff script are both built. The pairwise
+ratings and roster first-pass are not. See [PLAN.md](PLAN.md) for open work,
+[docs/design.md](docs/design.md) for settled decisions, and
 [docs/csv-formats.md](docs/csv-formats.md) for the reverse-engineered export formats.
 
 ## Layout
@@ -72,7 +73,7 @@ tests/run.sh
 
 Runs the Node suite over the app's logic and the `unittest` suite over the diff
 script; `tests/vendor.sh` fetches the two CDN libraries first. Both run in CI on
-every push and PR. See "Testing" in [PLAN.md](PLAN.md) for how a single-file app
+every push and PR. See "Testing" in [docs/design.md](docs/design.md) for how a single-file app
 with no build step gets unit tested.
 
 ## Data handling
@@ -85,6 +86,6 @@ hosting.
 ## Hosting
 
 Static single-page app, so GitHub Pages works. See "Hosting" in
-[PLAN.md](PLAN.md) for the constraints that follow from that choice — chiefly
+[docs/design.md](docs/design.md) for the constraints that follow from that choice — chiefly
 that all state is browser-local `localStorage`, per-browser and unsynced, so the
 Phase 3 rating DB needs explicit JSON export to survive.
