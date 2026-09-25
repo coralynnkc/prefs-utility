@@ -21,8 +21,13 @@ pref sheets silently.
 2. **Ranks tie and have gaps.** They are not `1..N`. Never renumber the sheet as
    `index + 1` — that flattens tie groups and makes every row show up in the
    diff. Preserve tie groups; emit changes only for judges the user moved.
-3. **`Rating` is read-only.** Tabroom computes it as a percentile over the full
-   tournament pool. Carry it through unchanged; never recompute or interpolate it.
+   Judges renumbered to make room are marked `bumped`: exported with their new
+   number, but left out of the in-app Changes list (so that list can be shorter
+   than `tools/diff_prefs.py`'s).
+3. **`Rating` is read-only in the export.** Carry the imported cell through
+   unchanged. The editor *displays* a live rating recomputed from the formula in
+   `docs/csv-formats.md`, but only when that formula reproduces every imported
+   rating on the sheet; otherwise it shows Tabroom's numbers as they came.
 4. **Preserve unknown columns verbatim.** Round-trip every field the importer did
    not understand, in its original position. Export is only allowed to differ
    from import in the rank column — an untouched sheet must re-export byte for

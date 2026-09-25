@@ -19,7 +19,8 @@ import { core, coreSource, hasPapa, read, openSample, sheetOfRanks, shape } from
 const {
   isInt, isDecimal, parseCsv, profile, guess, makeSheet,
   tiers, allocRank, splitInto, retier, movedCount, extraCols, buildCsv, setSheet,
-  swapNeighbour, diff, diffText, diffCsv, flaggedCount,
+  moveNeighbour, place, isMoved, bumpedCount, liveRatings, standing,
+  diff, diffText, diffCsv, flaggedCount,
 } = core;
 
 /* ---------------------------------------------------------------------- */
@@ -126,9 +127,10 @@ describe("importing the pref export", { skip: !hasPapa && "run tests/vendor.sh f
     assert.equal(sheet.map.rating, 6);
     assert.ok(!extraCols().some(c => c.i === 6),
       "the rating column is claimed by the mapping, so it is not a generic chip");
-    // Columns 3 and 4 are Online and Rounds, still correctly named because they
-    // sit left of the unnamed rank column.
-    assert.deepEqual(extraCols(), [{ i: 3, label: "Online" }, { i: 4, label: "Rounds" }]);
+    // Rounds sits left of the unnamed rank column, so its header name is still
+    // trustworthy and the guess claims it to weight the rating.
+    assert.equal(sheet.map.rounds, 4);
+    assert.deepEqual(extraCols(), [{ i: 3, label: "Online" }]);
   });
 });
 
@@ -171,7 +173,34 @@ describe("tier algebra", () => {
     assert.equal(splitInto(S.judges[4], 1, "low"), 2, "two judges shifted, not four");
     assert.deepEqual(shape(), [[10,1],[11,1],[12,1],[13,1],[20,1]]);
     assert.equal(S.judges[4].rank, 11);
-    assert.equal(movedCount(), 3, "the mover plus the run it displaced");
+    assert.equal(movedCount(), 1, "only the mover counts as moved");
+    assert.equal(bumpedCount(), 2, "the run it displaced is renumbered, not moved");
+  });
+
+  test("a judge the user already moved is not demoted to bumped", () => {
+    const S = sheetOfRanks([10, 11, 30, 40]);
+    place(S.judges[2], 12);                        // deliberate: 30 -> 12
+    splitInto(S.judges[3], 1, "low");              // 40 slots in under 10
+    assert.deepEqual(S.judges.map(j => j.rank), [10, 12, 13, 11]);
+    assert.equal(S.judges[1].bumped, true);
+    assert.ok(isMoved(S.judges[2]), "still a move of their own, just shifted");
+    assert.equal(movedCount(), 2);
+  });
+
+  test("moving a bumped judge makes them moved again", () => {
+    const S = sheetOfRanks([10, 11, 30]);
+    splitInto(S.judges[2], 1, "low");
+    assert.equal(S.judges[1].bumped, true);
+    place(S.judges[1], 20);
+    assert.ok(isMoved(S.judges[1]));
+  });
+
+  test("a split prefers the judge's own imported rank when it fits the gap", () => {
+    const S = sheetOfRanks([1, 8, 10, 10, 30]);
+    place(S.judges[1], 10);                        // 8 joins the 10s...
+    splitInto(S.judges[1], 1, "high");             // ...and splits back above them
+    assert.equal(S.judges[1].rank, 8, "not 9, which the 'high' hug alone would pick");
+    assert.equal(movedCount(), 0);
   });
 
   test("shifting works at the very top of the sheet", () => {
@@ -222,61 +251,121 @@ describe("tier algebra", () => {
 
 /* ---------------------------------------------------------------------- */
 
-describe("swapping with a neighbour", () => {
-  test("swaps with the nearest judge in the tier below, tier sizes unchanged", () => {
+describe("moving past a neighbour", () => {
+  test("takes a free number beyond the neighbour's tier; nobody else changes", () => {
     const S = sheetOfRanks([1, 2, 6, 10, 10, 10, 30]);
-    const partner = swapNeighbour(S.judges[2], false);    // the 6 goes down
-    assert.equal(partner, S.judges[3], "the first judge in the 10 tier");
-    assert.equal(S.judges[2].rank, 10);
-    assert.equal(S.judges[3].rank, 6);
-    assert.deepEqual(shape(), [[1,1],[2,1],[6,1],[10,3],[30,1]], "no tier joined or split");
-    assert.equal(movedCount(), 2, "exactly the two who traded");
+    const r = moveNeighbour(S.judges[2], false);    // the 6 goes down past the 10s
+    assert.equal(r.past, S.judges[3], "the first judge in the 10 tier");
+    assert.equal(r.shifted, 0);
+    assert.equal(S.judges[2].rank, 11, "hugs the tier it just passed");
+    assert.deepEqual(shape(), [[1,1],[2,1],[10,3],[11,1],[30,1]]);
+    assert.equal(movedCount(), 1, "exactly the one judge moved");
   });
 
-  test("swapping up picks the last judge of the tier above", () => {
-    const S = sheetOfRanks([10, 10, 10, 30]);
-    assert.equal(swapNeighbour(S.judges[3], true), S.judges[2]);
-    assert.deepEqual(S.judges.map(j => j.rank), [10, 10, 30, 10]);
+  test("moving up hugs the tier just passed from above", () => {
+    const S = sheetOfRanks([1, 10, 10, 10, 30]);
+    assert.equal(moveNeighbour(S.judges[4], true).past, S.judges[3]);
+    assert.equal(S.judges[4].rank, 9);
+    assert.equal(movedCount(), 1);
   });
 
-  test("tie-mates are skipped: they share the rank, so trading does nothing", () => {
+  test("tie-mates are skipped: moving out of a tie passes the tier beyond", () => {
     const S = sheetOfRanks([5, 10, 10, 10]);
-    assert.equal(swapNeighbour(S.judges[3], true), S.judges[0]);
-    assert.equal(S.judges[3].rank, 5);
+    assert.equal(moveNeighbour(S.judges[3], true).past, S.judges[0]);
+    assert.equal(S.judges[3].rank, 4);
   });
 
-  test("gaps are kept: a swap trades rank values, it never renumbers", () => {
-    const S = sheetOfRanks([1, 80]);
-    swapNeighbour(S.judges[0], false);
-    assert.deepEqual(S.judges.map(j => j.rank), [80, 1]);
+  test("bubbling one judge up many places renumbers nobody when there are gaps", () => {
+    const S = sheetOfRanks([2, 4, 6, 8, 10]);
+    for (let k = 0; k < 4; k++) moveNeighbour(S.judges[4], true);
+    assert.deepEqual(S.judges.map(j => j.rank), [2, 4, 6, 8, 1]);
+    assert.equal(movedCount(), 1);
+    assert.equal(bumpedCount(), 0);
   });
 
-  test("swapping back undoes the move completely", () => {
+  test("with no free number, the displaced run is bumped and left out of the diff", () => {
+    const S = sheetOfRanks([1, 2, 3, 4]);
+    const r = moveNeighbour(S.judges[3], true);
+    assert.equal(r.shifted, 1);
+    assert.deepEqual(S.judges.map(j => j.rank), [1, 2, 4, 3]);
+    assert.equal(movedCount(), 1);
+    assert.equal(bumpedCount(), 1);
+  });
+
+  test("moving back undoes the move completely", () => {
     const S = sheetOfRanks([1, 2, 6, 10, 10, 10, 30]);
-    swapNeighbour(S.judges[2], false);
-    swapNeighbour(S.judges[2], true);
+    moveNeighbour(S.judges[2], false);
+    moveNeighbour(S.judges[2], true);
+    assert.equal(S.judges[2].rank, 6, "back on the imported number, not 9");
     assert.equal(movedCount(), 0);
   });
 
   test("does nothing at either end of the sheet", () => {
     const S = sheetOfRanks([1, 2]);
-    assert.equal(swapNeighbour(S.judges[0], true), null);
-    assert.equal(swapNeighbour(S.judges[1], false), null);
+    assert.equal(moveNeighbour(S.judges[0], true), null);
+    assert.equal(moveNeighbour(S.judges[1], false), null);
     assert.equal(movedCount(), 0);
   });
 
-  test("never swaps into or out of the unranked bucket", () => {
+  test("never moves into or out of the unranked bucket", () => {
     const S = sheetOfRanks([1, 2, null]);
-    assert.equal(swapNeighbour(S.judges[1], false), null, "nobody gets unranked by a swap");
-    assert.equal(swapNeighbour(S.judges[2], true), null);
+    assert.equal(moveNeighbour(S.judges[1], false), null, "nobody gets unranked by a move");
+    assert.equal(moveNeighbour(S.judges[2], true), null);
     assert.equal(movedCount(), 0);
   });
 
-  test("with a filter, swaps with the nearest judge still showing", () => {
-    const S = sheetOfRanks([1, 2, 3, 4]);
+  test("with a filter, moves past the nearest judge still showing", () => {
+    const S = sheetOfRanks([10, 20, 30, 40]);
     const shown = new Set([0, 3]);
-    assert.equal(swapNeighbour(S.judges[0], false, j => shown.has(j.i)), S.judges[3]);
-    assert.deepEqual(S.judges.map(j => j.rank), [4, 2, 3, 1], "the hidden two are untouched");
+    assert.equal(moveNeighbour(S.judges[0], false, j => shown.has(j.i)).past, S.judges[3]);
+    assert.deepEqual(S.judges.map(j => j.rank), [41, 20, 30, 40], "the hidden two are untouched");
+  });
+});
+
+/* ---------------------------------------------------------------------- */
+
+describe("live ratings", () => {
+  test("the rounds-weighted formula reproduces every imported rating", () => {
+    const { sheet } = openSample("prefs-rated.csv");
+    const live = liveRatings();
+    assert.ok(live, "the fixture's ratings follow the formula, so it is trusted");
+    for (const j of sheet.judges) {
+      assert.equal(live.get(j) ?? "", j.fields[6], `${j.fields[0]} ${j.fields[1]}`);
+    }
+  });
+
+  test("ratings follow a move, while the export keeps the imported cells", () => {
+    const { sheet } = openSample("prefs-rated.csv");
+    const [ada, grace, alan, katherine] = sheet.judges;
+    moveNeighbour(katherine, true);                // 5 -> above the 2s; 1 and 2 are consecutive
+    assert.equal(katherine.rank, 2);
+    assert.deepEqual([grace.rank, alan.rank], [3, 3], "the 2s were bumped to make room");
+    const live = liveRatings();
+    assert.equal(live.get(ada), "3.23");
+    assert.equal(live.get(katherine), "22.58");
+    assert.equal(live.get(grace), "41.94", "(1 + 6 + 6) / 31");
+    assert.deepEqual(diff().map(r => r.j), [katherine], "only the judge the user moved");
+    const lines = buildCsv().trimEnd().split("\n");
+    assert.equal(lines[2], "Grace,Hopper,Example Academy,,6,3,22.58",
+      "a bumped judge's new rank is exported; the rating cell is not rewritten");
+    assert.equal(lines[4], "Katherine,Johnson,Sample School HS,,6,2,51.61");
+  });
+
+  test("a sheet whose ratings the formula can't reproduce gets no live ratings", () => {
+    openSample("prefs-sample.csv");                // its ratings are illustrative
+    assert.equal(liveRatings(), null);
+  });
+
+  test("no rounds column, no live ratings", () => {
+    const { map } = openSample("prefs-rated.csv");
+    openSample("prefs-rated.csv", { ...map, rounds: null });
+    assert.equal(liveRatings(), null);
+  });
+
+  test("standing falls back to an even split when there are no live ratings", () => {
+    const S = sheetOfRanks([1, 2, 2, 9]);
+    const at = standing();
+    assert.deepEqual(S.judges.map(j => Math.round(at.get(j))), [25, 50, 50, 100]);
   });
 });
 
