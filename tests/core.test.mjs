@@ -19,8 +19,8 @@ import { core, coreSource, hasPapa, read, openSample, sheetOfRanks, shape } from
 const {
   isInt, isDecimal, parseCsv, profile, guess, makeSheet,
   tiers, allocRank, splitInto, retier, movedCount, extraCols, buildCsv, setSheet,
-  moveNeighbour, place, isMoved, bumpedCount, liveRatings, standing,
-  diff, diffText, diffCsv, flaggedCount,
+  moveNeighbour, place, isMoved, bumpedCount, liveRatings, staleRatings, standing, namedCount,
+  diff, diffText, diffCsv, flaggedCount, getSheet,
 } = core;
 
 /* ---------------------------------------------------------------------- */
@@ -78,6 +78,18 @@ describe("importing the pref export", { skip: !hasPapa && "run tests/vendor.sh f
     // Names are only believable left of where the unnamed column was inserted.
     assert.equal(g.trustedUpto, 5);
     assert.deepEqual([g.map.first, g.map.last, g.map.school], [0, 1, 2]);
+  });
+
+  test("a trailing comma on the header doesn't hide the missing rank name", () => {
+    // Some exports end the header with a comma, so it parses as 7 names --
+    // the 7th blank -- over 7 fields. The rank is still unnamed in the middle.
+    const parsed = parseCsv("First,Last,School,Online,Rounds,Rating,\n" +
+      "Grace,Hopper,Sample School HS,ONLINE,2,7,3.21\nAlan,Turing,Placeholder Prep,,5,5,2\n");
+    assert.equal(namedCount(parsed.header), 6);
+    const g = guess(parsed.header, profile(parsed.rows, parsed.width), parsed.width);
+    assert.equal(g.shifted, true);
+    assert.deepEqual([g.map.rank, g.map.rating, g.map.rounds], [5, 6, 4],
+      "a whole-number rating like Alan's `2` still reads as the rating column");
   });
 
   test("a header whose names really do line up is read by name", () => {
@@ -351,9 +363,21 @@ describe("live ratings", () => {
     assert.equal(lines[4], "Katherine,Johnson,Sample School HS,,6,2,51.61");
   });
 
-  test("a sheet whose ratings the formula can't reproduce gets no live ratings", () => {
-    openSample("prefs-sample.csv");                // its ratings are illustrative
-    assert.equal(liveRatings(), null);
+  test("imported ratings that disagree are reported, not trusted over the ranks", () => {
+    const { sheet } = openSample("prefs-rated.csv");
+    assert.deepEqual(staleRatings(), [], "a fresh Tabroom export agrees with itself");
+    // What a re-imported -edited.csv looks like: new ranks, the old Rating cells.
+    const [ada, grace, alan, katherine] = sheet.judges;
+    for (const [j, r] of [[ada, 5], [katherine, 1]]) {
+      j.fields[5] = j.origRaw = String(r);
+      j.origRank = j.rank = r;
+    }
+    assert.deepEqual(new Set(staleRatings()), new Set([ada, katherine]),
+      "the 2s happen to keep their rating: 6 rounds still sit above them");
+    const live = liveRatings();
+    assert.ok(live, "stale cells no longer switch the live ratings off");
+    assert.equal(live.get(katherine), "3.23", "rated from the rank they have now");
+    assert.equal(live.get(ada), "51.61", "(1 + 6 + 6 + 3) / 31");
   });
 
   test("no rounds column, no live ratings", () => {
@@ -472,6 +496,29 @@ describe("export fidelity", { skip: !hasPapa && "run tests/vendor.sh first" }, (
     assert.equal(lines[5], "Barbara,Liskov,Hire,,5,15",
       "the six-field row is not padded out to seven");
     assert.equal(lines[1], 'Ada,Lovelace,"Lovelace, Babbage & Co",,6,10,11.44');
+  });
+
+  test("an unquoted comma in a school survives byte for byte", () => {
+    // Tabroom writes this unquoted, so it parses with a field " Northside".
+    // Papa.unparse would quote that for its leading space.
+    const text = "First,Last,School,Online,Rounds,Rating,\n" +
+      "Ada,Lovelace,Example University, Northside,2,11,5.41\n" +
+      "Grace,Hopper,Sample School HS,ONLINE,2,7,3.21\n";
+    const parsed = parseCsv(text);
+    const g = guess(parsed.header, profile(parsed.rows, parsed.width), parsed.width);
+    setSheet(makeSheet("x.csv", parsed, g.map));
+    assert.equal(buildCsv(), text);
+    getSheet().judges[1].rank = 3;
+    assert.equal(buildCsv().split("\n")[1], "Ada,Lovelace,Example University, Northside,2,11,5.41");
+  });
+
+  test("CRLF line endings and a missing final newline are given back", () => {
+    const text = "First,Last,School,Online,Rounds,Rating,\r\n" +
+      "Grace,Hopper,Sample School HS,ONLINE,2,7,3.21\r\nAlan,Turing,Placeholder Prep,,5,5,2";
+    const parsed = parseCsv(text);
+    const g = guess(parsed.header, profile(parsed.rows, parsed.width), parsed.width);
+    setSheet(makeSheet("x.csv", parsed, g.map));
+    assert.equal(buildCsv(), text);
   });
 
   test("an untouched unranked judge keeps a blank rank, not a zero", () => {
