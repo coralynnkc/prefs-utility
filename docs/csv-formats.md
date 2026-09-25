@@ -15,6 +15,10 @@ Source file: `Prefs for <Team> at <Tournament>.csv` (54 data rows in the observe
 
 ### The header lies
 
+(Some exports end the header with a comma — `...,Rounds,Rating,` — which parses
+as a seventh, blank name. It names nothing; the rank is still unnamed in the
+middle. Trailing blank names don't count as names.)
+
 The header row declares **6 columns**. Every data row has **7 fields**:
 
 ```
@@ -76,10 +80,17 @@ judge's 2 included), and the formula reproduces all 53 ratings to the hundredth.
 rank 80 → 94.10 does not divide out of 53 judges. It divides out of 271 rounds.)
 A 0-round judge adds nothing, which is why ranks 1 and 2 both read 0.37.
 
+A second real export (144 judges, 499 rounds) agrees on 139. The five misses sit
+at ranks 11–14 and 16–17, which Tabroom rated as if tied with ranks 11 and 15
+(5.41 and 7.21 each): the Rating column there describes an earlier tiering than
+the ranks do. So an imported rating is evidence, not ground truth — and a
+re-imported `-edited.csv` from this tool disagrees almost everywhere, since it
+keeps the old Rating cells beside the new ranks.
+
 **The exported cell is still read-only.** Carry it through unchanged; Tabroom
 recomputes its own once the new ranks are entered. The editor shows a live
-recomputation for display, and only when the formula reproduces every imported
-rating on that sheet.
+recomputation from the current ranks for display, and says so when most of the
+imported column disagrees (the already-edited case).
 
 ---
 
@@ -165,6 +176,13 @@ the alias map durable and exportable early.
 
 ## 4. Parsing notes
 
+- Line endings are CRLF with **no final newline** in the 144-judge export; the
+  exporter gives back whatever it was handed.
+- A school with a comma (shape: `Example University, Northside`) arrives
+  **unquoted**, so it splits into `Example University` and a ` Northside` in
+  the Online slot, and the row still has 7 fields. Rank and Rating stay in
+  place; only the school display suffers. Re-export it unquoted as it came
+  (PapaParse's `unparse` would quote ` Northside` for its leading space).
 - No quoted fields in either observed file (`grep -c '"'` → 0 in both). Do **not**
   rely on this holding: a school name with a comma would break naive `split(',')`.
   Use a real CSV parser.

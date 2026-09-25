@@ -50,8 +50,9 @@ A judge's rank changes only if you moved them. Untouched tiers keep their
 original rank values, gaps and all, which is what keeps the diff in step 4 down
 to the handful of judges you actually have to re-type.
 
-`Rating` is Tabroom's own percentile over the full tournament pool, so it is
-shown greyed and never written.
+`Rating` is Tabroom's rounds-weighted percentile of the sheet. The editor
+recomputes it live as judges move, but the exported file keeps the imported
+column untouched — Tabroom recomputes its own.
 
 Everything is stored in this browser's `localStorage` and nothing is uploaded.
 Edits autosave per file and are offered back the next time you open it.

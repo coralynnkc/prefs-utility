@@ -25,13 +25,15 @@ pref sheets silently.
    number, but left out of the in-app Changes list (so that list can be shorter
    than `tools/diff_prefs.py`'s).
 3. **`Rating` is read-only in the export.** Carry the imported cell through
-   unchanged. The editor *displays* a live rating recomputed from the formula in
-   `docs/csv-formats.md`, but only when that formula reproduces every imported
-   rating on the sheet; otherwise it shows Tabroom's numbers as they came.
+   unchanged. The editor *displays* a live rating recomputed from the ranks with
+   the formula in `docs/csv-formats.md` whenever every judge has integer Rounds.
+   It does not gate on the imported cells agreeing: a re-imported `-edited.csv`
+   carries old ratings next to new ranks, so they disagree by construction.
 4. **Preserve unknown columns verbatim.** Round-trip every field the importer did
    not understand, in its original position. Export is only allowed to differ
    from import in the rank column — an untouched sheet must re-export byte for
-   byte, and an unmoved judge's rank cell is written back as its original
+   byte (line endings and the final newline included; Tabroom writes CRLF with
+   none), and an unmoved judge's rank cell is written back as its original
    string, not a re-serialised number. Row order is part of this.
 5. **Use a real CSV parser.** The observed files happen to have no quoted fields;
    a school name containing a comma would break `split(',')`.

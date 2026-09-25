@@ -41,9 +41,16 @@
 <body>
 <div class="wrap">
 
-<h1>Judge Pref Tool</h1>
-<p class="sub">Import a Tabroom pref-sheet CSV, re-rank it, export it back.
-  Nothing leaves your browser.</p>
+<header class="app-head">
+  <span class="logo" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+         stroke-width="2.2" stroke-linecap="round"><path d="M5 6h14M5 12h9M5 18h5"/></svg>
+  </span>
+  <div>
+    <h1>Judge Pref Tool</h1>
+    <p class="tagline">Re-rank a Tabroom pref sheet and export it back. Nothing leaves your browser.</p>
+  </div>
+</header>
 
 <div id="libs-missing" class="note hide">
   Couldn't load PapaParse or SortableJS from the CDN. The app needs both.
@@ -52,10 +59,16 @@
 
 <!-- ===================== 1. import ===================== -->
 <section id="screen-import">
-  <div id="drop">
-    <p><strong>Drop a pref-sheet CSV here</strong>, or</p>
-    <p><input type="file" id="file" accept=".csv,text/csv"></p>
-  </div>
+  <label id="drop">
+    <span class="drop-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+    </span>
+    <strong>Drop a pref-sheet CSV here</strong>
+    <span class="drop-sub">or <span class="drop-link">choose a file</span> &mdash; the export from Tabroom's prefs page</span>
+    <input type="file" id="file" accept=".csv,text/csv">
+  </label>
   <div id="resume" class="hide">
     <h2>In progress</h2>
     <ul id="resume-list"></ul>
@@ -67,7 +80,7 @@
   <h2>Which column is which?</h2>
   <p class="sub" id="map-sub"></p>
   <div id="map-warning" class="note hide"></div>
-  <div class="panel">
+  <div class="panel flush">
     <table class="map">
       <thead>
         <tr><th>#</th><th>Header says</th><th>First rows</th><th>Use as</th></tr>
@@ -76,7 +89,7 @@
     </table>
   </div>
   <div id="map-error" class="note hide"></div>
-  <p style="margin-top:1rem">
+  <p class="actions">
     <button class="primary" id="map-apply">Open the editor</button>
     <button id="map-cancel">Pick a different file</button>
   </p>
@@ -85,24 +98,52 @@
 <!-- ===================== 3. editor ===================== -->
 <section id="screen-edit" class="hide">
   <div id="bar">
-    <strong id="filename" class="mono"></strong>
-    <span id="counts"></span>
-    <span class="grow"></span>
-    <input type="search" id="filter" placeholder="Filter judges..." autocomplete="off">
-    <label class="strike" title="Rating at which judges count as struck">Strike line
-      <input type="number" id="strike" min="1" max="99" step="1" placeholder="off"
-             list="strike-presets" aria-label="Strike line, percent">%</label>
-    <datalist id="strike-presets"><option value="50"></option><option value="75"></option></datalist>
-    <button id="flagged-only" aria-pressed="false" title="Show only flagged judges">&#9873; Flagged</button>
-    <button id="diff-toggle" aria-pressed="false" aria-controls="diff">Changes</button>
-    <button id="revert-all">Revert all</button>
-    <button class="primary" id="export">Export CSV</button>
-    <button id="restart">Close</button>
+    <div class="bar-row">
+      <div class="file">
+        <strong id="filename" class="mono"></strong>
+        <span id="counts"></span>
+      </div>
+      <span class="grow"></span>
+      <button id="revert-all" class="ghost">Revert all</button>
+      <button class="primary" id="export">Export CSV</button>
+      <button id="restart" class="ghost icon" title="Close this sheet" aria-label="Close this sheet">&times;</button>
+    </div>
+    <div class="bar-row">
+      <label class="search">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        <input type="search" id="filter" placeholder="Filter by judge or school" autocomplete="off">
+      </label>
+      <label class="strike" title="Rating at which judges count as struck">Strike at
+        <input type="number" id="strike" min="1" max="99" step="1" placeholder="off"
+               list="strike-presets" aria-label="Strike line, percent">%</label>
+      <datalist id="strike-presets"><option value="50"></option><option value="75"></option></datalist>
+      <button id="flagged-only" aria-pressed="false" title="Show only flagged judges">&#9873; Flagged</button>
+      <button id="diff-toggle" aria-pressed="false" aria-controls="diff">Changes</button>
+      <span class="grow"></span>
+      <details class="keys">
+        <summary>How to move judges</summary>
+        <div class="keys-pop">
+          <p>Drag a judge onto another row to share its rank, or into the lane
+            between two rows to give them a rank of their own.</p>
+          <dl>
+            <dt><kbd>&uarr;</kbd> <kbd>&darr;</kbd></dt><dd>Move past the judge above or below</dd>
+            <dt><kbd>&#8679;</kbd> + <kbd>&uarr;</kbd> <kbd>&darr;</kbd></dt><dd>Split into a new tier</dd>
+            <dt><kbd>&#8997;</kbd> + <kbd>&uarr;</kbd> <kbd>&darr;</kbd></dt><dd>Join the tier above or below</dd>
+            <dt><kbd>F</kbd></dt><dd>Flag a judge you mean to move</dd>
+          </dl>
+          <p class="fine">Untouched tiers keep their original rank, gaps and all, and a
+            move takes a free rank number so nobody else is renumbered unless there is no room.</p>
+        </div>
+      </details>
+    </div>
   </div>
 
   <div id="restore-prompt" class="note info hide"></div>
   <div id="shift-note" class="note hide"></div>
   <div id="save-note" class="note hide"></div>
+  <div id="rating-note" class="note info hide"></div>
 
   <section id="diff" class="panel hide" aria-label="Changes to re-enter in Tabroom">
     <div class="diff-head">
@@ -114,17 +155,7 @@
     <ol id="diff-list"></ol>
   </section>
 
-  <p class="sub" style="margin:.9rem 0 0">
-    Drag a judge onto another row to share its rank, or into the lane between
-    two rows to give them a rank of their own. Keyboard:
-    <code>&uarr;</code>/<code>&darr;</code> moves past the judge above or below,
-    <code>&#8679;&uarr;</code>/<code>&#8679;&darr;</code> splits into a new tier,
-    <code>&#8997;&uarr;</code>/<code>&#8997;&darr;</code> joins the tier above or below,
-    <code>F</code> flags a judge you mean to move.
-    Untouched tiers keep their original rank, gaps and all, and a move takes a
-    free rank number so nobody else is renumbered unless there is no room.
-  </p>
-  <p class="sub hide" id="filter-note" style="margin:.5rem 0 0">
+  <p class="sub hide" id="filter-note">
     Drag is off while a filter is active &mdash; the tiers you'd drop into are hidden.
     Arrow keys still work, and swap with the nearest judge still showing.
   </p>
@@ -163,7 +194,8 @@ const isDecimal = s => { s = String(s).trim(); return s !== "" && /^-?\d*\.\d+$/
  * real length so the export can trim that padding back off again.
  */
 function parseCsv(text) {
-  const res = Papa.parse(text.replace(/^\uFEFF/, ""), { skipEmptyLines: "greedy" });
+  text = text.replace(/^\uFEFF/, "");
+  const res = Papa.parse(text, { skipEmptyLines: "greedy" });
   const data = res.data.filter(r => r.some(c => String(c).trim() !== ""));
   if (!data.length) throw new Error("That file has no rows in it.");
   const header = data[0].map(String);
@@ -172,7 +204,23 @@ function parseCsv(text) {
   const width = Math.max(header.length, ...raw.map(r => r.length));
   const lens = raw.map(r => r.length);
   const rows = raw.map(r => r.length === width ? r : r.concat(Array(width - r.length).fill("")));
-  return { header, rows, lens, width };
+  // Line endings are part of the bytes too: Tabroom writes CRLF with no final
+  // newline, and the export has to give that back.
+  const eol = /\r\n/.test(text) ? "\r\n" : "\n";
+  const finalEol = /\r?\n\s*$/.test(text);
+  return { header, rows, lens, width, eol, finalEol };
+}
+
+/**
+ * How many header names the file really declares. Some Tabroom exports end the
+ * header with a comma (`...,Rounds,Rating,`), which parses as a seventh, empty
+ * name. It names nothing -- the rank is still missing from the middle -- so a
+ * trailing run of blank names doesn't count.
+ */
+function namedCount(header) {
+  let n = header.length;
+  while (n > 0 && String(header[n - 1]).trim() === "") n--;
+  return n;
 }
 
 /** Per-column shape: sample values plus whether the column is all-int / all-decimal. */
@@ -187,6 +235,9 @@ function profile(rows, width) {
       nonEmpty: filled.length,
       allInt: filled.length > 0 && filled.every(isInt),
       allDecimal: filled.length > 0 && filled.every(isDecimal),
+      // Rating is 2dp but written without trailing zeros, so a real column
+      // mixes `3.21` with `2`: numeric throughout, with at least one decimal.
+      ratingLike: filled.some(isDecimal) && filled.every(v => isDecimal(v) || isInt(v)),
     });
   }
   return cols;
@@ -207,13 +258,14 @@ function profile(rows, width) {
 function guess(header, cols, width) {
   const map = { first: null, last: null, full: null, rank: null, school: null, rating: null,
                 rounds: null };
-  let trustedUpto = Math.min(header.length, width);
+  const named = namedCount(header);
+  let trustedUpto = Math.min(named, width);
   let shifted = false;
 
-  if (width > header.length) {
+  if (width > named) {
     shifted = true;
     const r = width - 2, g = width - 1;
-    if (r >= 0 && cols[r].allInt && cols[g].allDecimal) {
+    if (r >= 0 && cols[r].allInt && cols[g].ratingLike) {
       map.rank = r;
       map.rating = g;
       trustedUpto = r;      // the unnamed column was inserted here
@@ -263,6 +315,8 @@ function makeSheet(fileName, parsed, map) {
     header: parsed.header,
     width: parsed.width,
     lens: parsed.lens,
+    eol: parsed.eol,
+    finalEol: parsed.finalEol,
     map,
     judges: parsed.rows.map((fields, i) => {
       const raw = fields[map.rank];
@@ -425,11 +479,14 @@ function moveNeighbour(judge, up, visible = () => true) {
        rating = (1 + rounds of every judge ranked strictly better)
                 / (rounds of every judge on the sheet, unranked included) * 100
 
-   Measured against a real 53-judge export it reproduces every value to the
-   hundredth, so the editor can show ratings that follow the judges as they
-   move. It is display only: the export still writes the imported Rating cell
-   untouched. And it is only trusted when it reproduces the imported ratings --
-   a sheet where it doesn't keeps showing Tabroom's numbers as they came.
+   It reproduces all 53 ratings of one real export, and 139 of 144 of a second
+   (see docs/csv-formats.md for the five it misses). The editor therefore
+   always shows ratings recomputed from the current ranks. It does not gate on
+   the imported cells agreeing: they go stale the moment ranks change, and a
+   re-imported `-edited.csv` carries every old rating next to every new rank,
+   so gating on them turned the live ratings off exactly when they were needed.
+   It is display only: the export still writes the imported Rating cell
+   untouched.
 */
 
 /** Percentile per ranked judge under `rankOf`, weighting each judge by `roundsOf`. */
@@ -451,27 +508,40 @@ function computeRatings(rankOf, roundsOf) {
 
 const fmtRating = v => (Math.round(v * 100) / 100).toFixed(2);
 
+/** Rounds per judge, or null unless every judge has an integer Rounds cell. */
+function roundsFn() {
+  const rc = S.map.rounds;
+  if (rc == null || !S.judges.every(j => isInt(j.fields[rc]))) return null;
+  return j => parseInt(j.fields[rc].trim(), 10);
+}
+
 /**
  * Current ratings as 2dp strings, keyed by judge -- or null when the sheet has
- * no usable Rounds column, or the formula fails to reproduce what Tabroom
- * exported (then we have no business inventing numbers).
+ * no usable Rounds column to weight them by.
  */
 function liveRatings() {
-  const { rounds: rc, rating: gc } = S.map;
-  if (rc == null || gc == null) return null;
-  if (!S.judges.every(j => isInt(j.fields[rc]))) return null;
-  const roundsOf = j => parseInt(j.fields[rc].trim(), 10);
-  const imported = computeRatings(j => j.origRank, roundsOf);
-  let checked = 0;
-  for (const [j, v] of imported) {
-    const cell = j.fields[gc].trim();
-    if (cell === "") continue;
-    if (!(isDecimal(cell) || isInt(cell)) || Math.abs(parseFloat(cell) - v) > 0.006) return null;
-    checked++;
-  }
-  if (!checked) return null;
+  const roundsOf = roundsFn();
+  if (!roundsOf) return null;
   const out = new Map();
   for (const [j, v] of computeRatings(j => j.rank, roundsOf)) out.set(j, fmtRating(v));
+  return out;
+}
+
+/**
+ * Judges whose imported Rating cell disagrees with the formula at their
+ * imported rank. Context for the reader, never a gate: the usual cause is an
+ * already-edited export, whose Rating column still describes the old ranks.
+ */
+function staleRatings() {
+  const roundsOf = roundsFn();
+  const gc = S.map.rating;
+  if (!roundsOf || gc == null) return [];
+  const out = [];
+  for (const [j, v] of computeRatings(j => j.origRank, roundsOf)) {
+    const cell = j.fields[gc].trim();
+    if (cell === "") continue;
+    if (!(isDecimal(cell) || isInt(cell)) || Math.abs(parseFloat(cell) - v) > 0.006) out.push(j);
+  }
   return out;
 }
 
@@ -548,7 +618,8 @@ function judgeName(j) {
 
 /** Header names are only trustworthy left of the unnamed rank column. */
 function trustedUpto() {
-  return S.width > S.header.length ? S.map.rank : S.header.length;
+  const n = namedCount(S.header);
+  return S.width > n ? S.map.rank : n;
 }
 
 /** Columns the mapping did not claim, shown as greyed context on each row. */
@@ -573,6 +644,15 @@ function extraCols() {
    have not touched must reproduce the input byte for byte.
 */
 
+/**
+ * One CSV field, quoted only when it has to be. Not Papa.unparse: that also
+ * quotes any field with a leading or trailing space, and Tabroom writes a
+ * school like `Example University, Northside` unquoted -- so the row parses
+ * with a field ` Northside`, and Papa would re-export it as `" Northside"`,
+ * changing a line nobody touched.
+ */
+const csvField = s => (/[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+
 function buildCsv() {
   const rankCol = S.map.rank;
   const rows = S.judges.map(j => {
@@ -580,7 +660,9 @@ function buildCsv() {
     out[rankCol] = rankCell(j);
     return out.slice(0, Math.max(S.lens[j.i], rankCol + 1));
   });
-  return Papa.unparse([S.header, ...rows], { newline: "\n" }) + "\n";
+  const eol = S.eol ?? "\n";
+  return [S.header, ...rows].map(r => r.map(c => csvField(String(c))).join(",")).join(eol) +
+    (S.finalEol ?? true ? eol : "");
 }
 
 /* ==== core:end ========================================================== */
@@ -675,7 +757,7 @@ function listSaved() {
   $("#resume").classList.toggle("hide", rows.length === 0);
   $("#resume-list").innerHTML = rows.map(({ k, v }) => `
     <li>
-      <span><span class="mono">${esc(v.fileName)}</span>
+      <span><span class="rname">${esc(v.fileName)}</span>
         <span class="jschool">&mdash; ${v.judges.length} judges, ${v.moved} moved,
         ${v.flagged ? `${v.flagged} flagged, ` : ""}saved ${esc(new Date(v.savedAt).toLocaleString())}</span></span>
       <span>
@@ -700,6 +782,7 @@ function resume(key) {
   if (!v) return;
   S = {
     fileName: v.fileName, header: v.header, width: v.width, lens: v.lens,
+    eol: v.eol ?? "\n", finalEol: v.finalEol ?? true,
     map: withRounds(v.map, v.header, v.judges.map(j => j.fields), v.width),
     judges: v.judges.map((j, i) => ({
       i, fields: j.fields, origRaw: j.origRaw, origRank: j.origRank, rank: j.rank,
@@ -751,7 +834,7 @@ function startMapping(fileName, parsed) {
   const warn = $("#map-warning");
   if (g.shifted) {
     warn.classList.remove("hide");
-    warn.innerHTML = `This file declares <b>${parsed.header.length}</b> header names for
+    warn.innerHTML = `This file declares <b>${namedCount(parsed.header)}</b> header names for
       <b>${parsed.width}</b> columns. Tabroom leaves the rank column unnamed, and it sits in
       the <em>middle</em> of the row &mdash; so every header name from that point rightward
       labels the wrong column. Trust the sample values below, not the names.` +
@@ -769,7 +852,7 @@ function startMapping(fileName, parsed) {
   };
 
   $("#map-body").innerHTML = pending.cols.map(c => {
-    const named = c.idx < parsed.header.length;
+    const named = c.idx < parsed.header.length && parsed.header[c.idx].trim() !== "";
     const trusted = c.idx < pending.trustedUpto;
     const label = !named
       ? `<span class="unnamed">(unnamed)</span>`
@@ -884,8 +967,25 @@ function openEditor() {
     $(id).classList.add("hide");
   }
   focusedId = null;
+  noteStaleRatings();
   showScreen("edit");
   render();
+}
+
+/** Say so when the imported Rating column mostly doesn't match the imported ranks. */
+function noteStaleRatings() {
+  const el = $("#rating-note");
+  const stale = liveRatings() ? staleRatings().length : 0;
+  // A fresh Tabroom export can disagree with itself on a handful of judges
+  // (see docs/csv-formats.md); only speak up when most of the column is off.
+  if (stale < S.judges.filter(j => j.origRank !== null).length / 2) {
+    el.classList.add("hide");
+    return;
+  }
+  alertNote(el, `This looks like an already-edited export: its Rating column still
+    describes the old ranks for <b>${stale}</b> judges. The ratings shown here are
+    recomputed from the ranks you see; the exported file keeps the column as it came,
+    and Tabroom recomputes its own.`);
 }
 
 const schoolOf = j => (S.map.school !== null ? j.fields[S.map.school].trim() : "");
@@ -907,7 +1007,12 @@ function judgeInner(j, extras, live) {
   const school = schoolOf(j);
   const chips = extras
     .filter(c => j.fields[c.i].trim() !== "")
-    .map(c => `<span class="chip">${esc(c.label)} ${esc(j.fields[c.i].trim())}</span>`)
+    .map(c => {
+      // "Online ONLINE" says it twice; a value that is its own label stands alone.
+      const v = j.fields[c.i].trim();
+      const text = v.toLowerCase() === c.label.toLowerCase() ? v : `${c.label} ${v}`;
+      return `<span class="chip">${esc(text)}</span>`;
+    })
     .join("");
   const was = j.origRank === null ? "unranked" : j.origRank;
   const name = judgeName(j);
@@ -1377,6 +1482,16 @@ document.addEventListener("keydown", e => {
   if (el) el.scrollIntoView({ block: "nearest" });
 });
 
+/* ---- help popover: close on a click anywhere else, or Escape ---- */
+
+document.addEventListener("click", e => {
+  const d = $("details.keys");
+  if (d.open && !d.contains(e.target)) d.open = false;
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") $("details.keys").open = false;
+});
+
 /* ---- strike line ---- */
 
 $("#strike").value = strikeLine ?? "";
@@ -1471,7 +1586,8 @@ function autosave() {
     // save hostage. Writing now would overwrite it with the fresh import.
     if (!$("#restore-prompt").classList.contains("hide")) return;
     const ok = store.set(sheetKey(S.fileName), {
-      fileName: S.fileName, header: S.header, width: S.width, lens: S.lens, map: S.map,
+      fileName: S.fileName, header: S.header, width: S.width, lens: S.lens,
+      eol: S.eol, finalEol: S.finalEol, map: S.map,
       moved: S.judges.filter(isChanged).length, flagged: flaggedCount(), savedAt: Date.now(),
       judges: S.judges.map(j => ({
         fields: j.fields, origRaw: j.origRaw, origRank: j.origRank, rank: j.rank,
