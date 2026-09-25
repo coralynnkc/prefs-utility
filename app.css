@@ -27,6 +27,7 @@
   --warn-soft: #fdf3df;
   --moved: #a1440d;
   --moved-soft: #fdeee2;
+  --flag: #c2261d;
   --radius: 12px;
   --shadow: 0 1px 2px rgba(18, 20, 26, .05), 0 6px 20px -8px rgba(18, 20, 26, .12);
   --shadow-lift: 0 12px 28px -10px rgba(18, 20, 26, .35);
@@ -42,6 +43,7 @@
     --on-accent: #0b1830;
     --warn: #e3b464; --warn-soft: #2e2616;
     --moved: #f0a06a; --moved-soft: #32211a;
+    --flag: #ff6b61;
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -10px rgba(0, 0, 0, .6);
     --shadow-lift: 0 14px 30px -10px rgba(0, 0, 0, .7);
   }
@@ -247,6 +249,56 @@ li.judge:focus-visible, li.judge:focus {
 }
 .badge:hover { background: color-mix(in srgb, var(--moved) 18%, transparent); }
 
+/* ---- flags ----
+
+   The flag sits just right of the grip. Unflagged it is a faint outline that
+   only darkens on hover or focus, so a sheet with no flags reads exactly as
+   it did before; flagged, it is solid and the row gets a red edge you can spot
+   while scrolling a long sheet.
+*/
+button.flag {
+  flex: 0 0 auto; padding: 0 .15rem; border: 0; background: none;
+  font-size: .9rem; line-height: 1; border-radius: 4px; cursor: pointer;
+  color: color-mix(in srgb, var(--faint) 45%, transparent);
+}
+li.judge:hover button.flag, li.judge:focus button.flag,
+li.judge:focus-within button.flag { color: var(--muted); }
+button.flag:hover:not(:disabled) { background: none; color: var(--flag); }
+li.judge.flagged button.flag, #diff-list li.flagged::after { color: var(--flag); }
+li.judge.flagged { box-shadow: inset 3px 0 0 var(--flag); }
+li.judge.flagged:focus, li.judge.flagged:focus-visible {
+  box-shadow: inset 3px 0 0 var(--flag), inset 0 0 0 2px var(--accent);
+}
+li.judge { scroll-margin: 5rem 0 2rem; }
+#bar button[aria-pressed="true"] {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink);
+}
+
+/* ---- diff checklist ---- */
+#diff { margin-top: 1rem; padding: .7rem .9rem .5rem; }
+.diff-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.diff-head .grow { flex: 1 1 2rem; }
+#diff-list {
+  list-style: none; margin: .5rem 0 0; padding: 0;
+  columns: 2 22rem; column-gap: 1.5rem;
+}
+#diff-list li {
+  display: flex; align-items: center; gap: .5rem; break-inside: avoid;
+  padding: .22rem 0; border-top: 1px solid var(--line); min-width: 0;
+}
+#diff-list li.flagged::after { content: "\2691"; font-size: .8rem; }
+#diff-list li.done button.link, #diff-list li.done .diff-ranks {
+  color: var(--faint); text-decoration: line-through;
+}
+#diff-list input { margin: 0; accent-color: var(--accent); }
+button.link {
+  padding: 0; border: 0; background: none; font-weight: 600; white-space: nowrap;
+  color: var(--ink); text-align: left;
+}
+button.link:hover:not(:disabled) { background: none; color: var(--accent-ink); text-decoration: underline; }
+.diff-ranks { margin-left: auto; white-space: nowrap; color: var(--muted); }
+.diff-ranks b { color: var(--moved); }
+
 /* ---- drag ----
 
    Gap geometry is FIXED. The gaps between tiers are the same height whether or
@@ -304,4 +356,4 @@ body.dragging li.judge.moved:not(.drag-fallback):hover { background: var(--moved
 body.dragging { cursor: grabbing; user-select: none; }
 
 #unranked { margin-top: 1.4rem; }
-.filtered-out { display: none; }
+li.judge.filtered-out { display: none; }

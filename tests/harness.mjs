@@ -42,7 +42,8 @@ export function coreSource() {
 
 const EXPORTS = [
   "hash", "isInt", "isDecimal", "parseCsv", "profile", "guess", "makeSheet",
-  "tiers", "allocRank", "splitInto", "retier", "movedCount",
+  "tiers", "allocRank", "splitInto", "retier", "movedCount", "flaggedCount",
+  "swapNeighbour", "rankCell", "diff", "judgeLabel", "diffText", "diffCsv",
   "judgeName", "trustedUpto", "extraCols", "buildCsv",
 ];
 

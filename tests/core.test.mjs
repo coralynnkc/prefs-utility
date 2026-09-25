@@ -10,11 +10,16 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { core, coreSource, hasPapa, read, openSample, sheetOfRanks, shape } from "./harness.mjs";
 
 const {
   isInt, isDecimal, parseCsv, profile, guess, makeSheet,
   tiers, allocRank, splitInto, retier, movedCount, extraCols, buildCsv, setSheet,
+  swapNeighbour, diff, diffText, diffCsv, flaggedCount,
 } = core;
 
 /* ---------------------------------------------------------------------- */
@@ -212,6 +217,126 @@ describe("tier algebra", () => {
 
   test("allocRank on an empty sheet starts at 1", () => {
     assert.deepEqual(allocRank([], 0, "low"), { rank: 1, shifted: 0 });
+  });
+});
+
+/* ---------------------------------------------------------------------- */
+
+describe("swapping with a neighbour", () => {
+  test("swaps with the nearest judge in the tier below, tier sizes unchanged", () => {
+    const S = sheetOfRanks([1, 2, 6, 10, 10, 10, 30]);
+    const partner = swapNeighbour(S.judges[2], false);    // the 6 goes down
+    assert.equal(partner, S.judges[3], "the first judge in the 10 tier");
+    assert.equal(S.judges[2].rank, 10);
+    assert.equal(S.judges[3].rank, 6);
+    assert.deepEqual(shape(), [[1,1],[2,1],[6,1],[10,3],[30,1]], "no tier joined or split");
+    assert.equal(movedCount(), 2, "exactly the two who traded");
+  });
+
+  test("swapping up picks the last judge of the tier above", () => {
+    const S = sheetOfRanks([10, 10, 10, 30]);
+    assert.equal(swapNeighbour(S.judges[3], true), S.judges[2]);
+    assert.deepEqual(S.judges.map(j => j.rank), [10, 10, 30, 10]);
+  });
+
+  test("tie-mates are skipped: they share the rank, so trading does nothing", () => {
+    const S = sheetOfRanks([5, 10, 10, 10]);
+    assert.equal(swapNeighbour(S.judges[3], true), S.judges[0]);
+    assert.equal(S.judges[3].rank, 5);
+  });
+
+  test("gaps are kept: a swap trades rank values, it never renumbers", () => {
+    const S = sheetOfRanks([1, 80]);
+    swapNeighbour(S.judges[0], false);
+    assert.deepEqual(S.judges.map(j => j.rank), [80, 1]);
+  });
+
+  test("swapping back undoes the move completely", () => {
+    const S = sheetOfRanks([1, 2, 6, 10, 10, 10, 30]);
+    swapNeighbour(S.judges[2], false);
+    swapNeighbour(S.judges[2], true);
+    assert.equal(movedCount(), 0);
+  });
+
+  test("does nothing at either end of the sheet", () => {
+    const S = sheetOfRanks([1, 2]);
+    assert.equal(swapNeighbour(S.judges[0], true), null);
+    assert.equal(swapNeighbour(S.judges[1], false), null);
+    assert.equal(movedCount(), 0);
+  });
+
+  test("never swaps into or out of the unranked bucket", () => {
+    const S = sheetOfRanks([1, 2, null]);
+    assert.equal(swapNeighbour(S.judges[1], false), null, "nobody gets unranked by a swap");
+    assert.equal(swapNeighbour(S.judges[2], true), null);
+    assert.equal(movedCount(), 0);
+  });
+
+  test("with a filter, swaps with the nearest judge still showing", () => {
+    const S = sheetOfRanks([1, 2, 3, 4]);
+    const shown = new Set([0, 3]);
+    assert.equal(swapNeighbour(S.judges[0], false, j => shown.has(j.i)), S.judges[3]);
+    assert.deepEqual(S.judges.map(j => j.rank), [4, 2, 3, 1], "the hidden two are untouched");
+  });
+});
+
+/* ---------------------------------------------------------------------- */
+
+describe("the in-app diff", { skip: !hasPapa && "run tests/vendor.sh first" }, () => {
+  test("an untouched sheet has nothing to re-enter", () => {
+    openSample("prefs-sample.csv");
+    assert.deepEqual(diff(), []);
+    assert.equal(diffText(), "No rank changes. Nothing to re-enter.\n");
+  });
+
+  test("lists only moved judges, sorted by new rank, unranked last", () => {
+    const { sheet } = openSample("prefs-quirks.csv");
+    sheet.judges[2].rank = 40;
+    sheet.judges[0].rank = null;
+    sheet.judges[6].rank = 3;                      // Margaret Hamilton, was blank
+    const rows = diff();
+    assert.deepEqual(rows.map(r => r.j.i), [6, 2, 0]);
+    assert.deepEqual(rows.map(r => [r.from, r.to]).at(0), ["", "3"]);
+    assert.equal(rows.at(-1).to, "");
+  });
+
+  test("a tick only holds for the rank it was ticked at", () => {
+    const { sheet } = openSample("prefs-sample.csv");
+    const j = sheet.judges[3];
+    j.rank = 6;
+    j.ticked = "6";
+    assert.equal(diff()[0].done, true);
+    j.rank = 7;                                    // moved again after ticking
+    assert.equal(diff()[0].done, false);
+  });
+
+  test("the checklist names each judge with their school", () => {
+    const { sheet } = openSample("prefs-sample.csv");
+    sheet.judges[3].rank = 6;
+    assert.equal(diffText(),
+      "Re-enter in Tabroom (1 judge):\n\n  [ ] Katherine Johnson (Sample School HS)    10 -> 6\n");
+  });
+
+  test("agrees line for line with tools/diff_prefs.py --csv on the exported file", () => {
+    const { text, sheet } = openSample("prefs-quirks.csv");
+    sheet.judges[0].rank = 30;
+    sheet.judges[2].rank = null;
+    sheet.judges[6].rank = 2;
+    const dir = mkdtempSync(path.join(tmpdir(), "prefs-diff-"));
+    const a = path.join(dir, "original.csv"), b = path.join(dir, "edited.csv");
+    writeFileSync(a, text);
+    writeFileSync(b, buildCsv());
+    const py = execFileSync("python3", ["tools/diff_prefs.py", "--csv", a, b],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    assert.equal(diffCsv(), py.replace(/\r\n/g, "\n"));
+  });
+
+  test("flags are a note to self and never reach the export", () => {
+    const { text, sheet } = openSample("prefs-sample.csv");
+    sheet.judges[0].flag = sheet.judges[5].flag = true;
+    assert.equal(flaggedCount(), 2);
+    assert.equal(movedCount(), 0);
+    assert.equal(buildCsv(), text);
   });
 });
 

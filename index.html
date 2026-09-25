@@ -89,6 +89,8 @@
     <span id="counts"></span>
     <span class="grow"></span>
     <input type="search" id="filter" placeholder="Filter judges..." autocomplete="off">
+    <button id="flagged-only" aria-pressed="false" title="Show only flagged judges">&#9873; Flagged</button>
+    <button id="diff-toggle" aria-pressed="false" aria-controls="diff">Changes</button>
     <button id="revert-all">Revert all</button>
     <button class="primary" id="export">Export CSV</button>
     <button id="restart">Close</button>
@@ -98,16 +100,28 @@
   <div id="shift-note" class="note hide"></div>
   <div id="save-note" class="note hide"></div>
 
+  <section id="diff" class="panel hide" aria-label="Changes to re-enter in Tabroom">
+    <div class="diff-head">
+      <strong id="diff-title"></strong>
+      <span class="grow"></span>
+      <button id="diff-copy">Copy</button>
+      <button id="diff-csv">Download CSV</button>
+    </div>
+    <ol id="diff-list"></ol>
+  </section>
+
   <p class="sub" style="margin:.9rem 0 0">
     Drag a judge onto another row to share its rank, or into the lane between
     two rows to give them a rank of their own. Keyboard:
-    <code>&uarr;</code>/<code>&darr;</code> joins the tier above or below,
-    <code>&#8679;&uarr;</code>/<code>&#8679;&darr;</code> splits into a new tier.
+    <code>&uarr;</code>/<code>&darr;</code> swaps with the judge above or below,
+    <code>&#8679;&uarr;</code>/<code>&#8679;&darr;</code> splits into a new tier,
+    <code>&#8997;&uarr;</code>/<code>&#8997;&darr;</code> joins the tier above or below,
+    <code>F</code> flags a judge you mean to move.
     Untouched tiers keep their original rank, gaps and all.
   </p>
   <p class="sub hide" id="filter-note" style="margin:.5rem 0 0">
     Drag is off while a filter is active &mdash; the tiers you'd drop into are hidden.
-    Arrow keys still work.
+    Arrow keys still work, and swap with the nearest judge still showing.
   </p>
 
   <div id="board"></div>
@@ -226,6 +240,9 @@ function guess(header, cols, width) {
  * @property {string} origRaw       the rank cell exactly as imported
  * @property {number|null} origRank parsed original rank (null = unranked)
  * @property {number|null} rank     current rank
+ * @property {boolean} flag         marked "I want to move this one"; never exported
+ * @property {string|null} ticked   the rank cell the diff checklist was ticked at,
+ *                                  so moving the judge again un-ticks them
  */
 let S = null;
 
@@ -240,7 +257,8 @@ function makeSheet(fileName, parsed, map) {
     map,
     judges: parsed.rows.map((fields, i) => {
       const raw = fields[map.rank];
-      return { i, fields, origRaw: raw, origRank: parseRank(raw), rank: parseRank(raw) };
+      return { i, fields, origRaw: raw, origRank: parseRank(raw), rank: parseRank(raw),
+               flag: false, ticked: null };
     }),
   };
 }
@@ -336,6 +354,77 @@ function retier(oldRank, newRank) {
 }
 
 const movedCount = () => S.judges.filter(j => j.rank !== j.origRank).length;
+const flaggedCount = () => S.judges.filter(j => j.flag).length;
+
+/**
+ * Trade ranks with the nearest judge above (`up`) or below in a *different*
+ * tier -- the person you see directly above or below you on the board, skipping
+ * your own tie-mates, since trading ranks with them changes nothing.
+ *
+ * A swap is the gentlest move there is: exactly two judges change, every tier
+ * keeps its size, and swapping back puts both at their original rank so they
+ * drop out of the diff again. `visible` lets the caller skip judges a filter is
+ * hiding, so the swap partner is always someone on screen.
+ *
+ * Unranked judges have no one to swap with; returns the partner or null.
+ */
+function swapNeighbour(judge, up, visible = () => true) {
+  if (judge.rank === null) return null;
+  const order = tiers().ranked.flatMap(t => t.judges);
+  const step = up ? -1 : 1;
+  for (let k = order.indexOf(judge) + step; k >= 0 && k < order.length; k += step) {
+    const o = order[k];
+    if (o.rank === judge.rank || !visible(o)) continue;
+    [judge.rank, o.rank] = [o.rank, judge.rank];
+    return o;
+  }
+  return null;
+}
+
+/* ---- diff ---------------------------------------------------------------
+
+   The same checklist tools/diff_prefs.py prints, computed from the sheet in
+   memory: only judges whose rank changed, sorted by new rank so it reads in
+   the order you'd work down Tabroom's page. `from` is the imported rank cell
+   verbatim and `to` is exactly what buildCsv will write, so the checklist and
+   the exported file can never disagree.
+*/
+
+const rankCell = j => (j.rank === j.origRank ? j.origRaw : j.rank === null ? "" : String(j.rank));
+
+function diff() {
+  const key = j => (j.rank === null ? Infinity : j.rank);
+  return S.judges
+    .filter(j => j.rank !== j.origRank)
+    .sort((a, b) => key(a) - key(b) || a.i - b.i)
+    .map(j => ({ j, from: j.origRaw.trim(), to: rankCell(j), done: j.ticked === rankCell(j) }));
+}
+
+/** A judge as the checklist names them: "First Last (School)". */
+function judgeLabel(j) {
+  const name = judgeName(j) || "(unnamed judge)";
+  const school = S.map.school !== null ? j.fields[S.map.school].trim() : "";
+  return school ? `${name} (${school})` : name;
+}
+
+/** The checklist as plain text, in diff_prefs.py's layout, for the clipboard. */
+function diffText() {
+  const rows = diff();
+  if (!rows.length) return "No rank changes. Nothing to re-enter.\n";
+  const show = v => (v === "" ? "unranked" : v);
+  const w = Math.max(...rows.map(r => judgeLabel(r.j).length));
+  const fw = Math.max(4, ...rows.map(r => show(r.from).length));
+  const lines = rows.map(r =>
+    `  [${r.done ? "x" : " "}] ${judgeLabel(r.j).padEnd(w)}  ${show(r.from).padStart(fw)} -> ${show(r.to)}`);
+  return `Re-enter in Tabroom (${rows.length} judge${rows.length === 1 ? "" : "s"}):\n\n` +
+    lines.join("\n") + "\n";
+}
+
+/** The checklist as CSV, in the same columns as `diff_prefs.py --csv`. */
+function diffCsv() {
+  const rows = diff().map(r => [judgeLabel(r.j), r.from, r.to, "changed"]);
+  return Papa.unparse([["judge", "old_rank", "new_rank", "status"], ...rows], { newline: "\n" }) + "\n";
+}
 
 /* ---- display helpers ---------------------------------------------------- */
 
@@ -380,8 +469,7 @@ function buildCsv() {
   const rankCol = S.map.rank;
   const rows = S.judges.map(j => {
     const out = j.fields.slice();
-    out[rankCol] = (j.rank === j.origRank) ? j.origRaw
-                 : (j.rank === null ? "" : String(j.rank));
+    out[rankCol] = rankCell(j);
     return out.slice(0, Math.max(S.lens[j.i], rankCol + 1));
   });
   return Papa.unparse([S.header, ...rows], { newline: "\n" }) + "\n";
@@ -481,7 +569,7 @@ function listSaved() {
     <li>
       <span><span class="mono">${esc(v.fileName)}</span>
         <span class="jschool">&mdash; ${v.judges.length} judges, ${v.moved} moved,
-        saved ${esc(new Date(v.savedAt).toLocaleString())}</span></span>
+        ${v.flagged ? `${v.flagged} flagged, ` : ""}saved ${esc(new Date(v.savedAt).toLocaleString())}</span></span>
       <span>
         <button data-resume="${esc(k)}">Resume</button>
         <button data-forget="${esc(k)}">Discard</button>
@@ -506,6 +594,7 @@ function resume(key) {
     fileName: v.fileName, header: v.header, width: v.width, lens: v.lens, map: v.map,
     judges: v.judges.map((j, i) => ({
       i, fields: j.fields, origRaw: j.origRaw, origRank: j.origRank, rank: j.rank,
+      flag: !!j.flag, ticked: j.ticked ?? null,
     })),
   };
   openEditor();
@@ -635,9 +724,12 @@ function offerRestore() {
   const el = $("#restore-prompt");
   el.classList.add("hide");
   const saved = store.get(sheetKey(S.fileName));
-  if (!saved || saved.judges.length !== S.judges.length || !saved.moved) return;
-  const ranks = saved.judges.map(j => j.rank);
-  alertNote(el, `You have <b>${saved.moved}</b> unexported rank changes saved for
+  if (!saved || saved.judges.length !== S.judges.length || !(saved.moved || saved.flagged)) return;
+  const what = [
+    saved.moved ? `<b>${saved.moved}</b> unexported rank change${saved.moved === 1 ? "" : "s"}` : "",
+    saved.flagged ? `<b>${saved.flagged}</b> flagged judge${saved.flagged === 1 ? "" : "s"}` : "",
+  ].filter(Boolean).join(" and ");
+  alertNote(el, `You have ${what} saved for
     <span class="mono">${esc(S.fileName)}</span> from
     ${esc(new Date(saved.savedAt).toLocaleString())}.
     <span class="row">
@@ -645,7 +737,9 @@ function offerRestore() {
       <button id="do-ignore">Start from the file</button>
     </span>`);
   $("#do-restore").addEventListener("click", () => {
-    for (let i = 0; i < S.judges.length; i++) S.judges[i].rank = ranks[i];
+    saved.judges.forEach((sj, i) => {
+      Object.assign(S.judges[i], { rank: sj.rank, flag: !!sj.flag, ticked: sj.ticked ?? null });
+    });
     el.classList.add("hide");
     render();
   });
@@ -662,6 +756,7 @@ let focusedId = null;
 function openEditor() {
   $("#filename").textContent = S.fileName;
   $("#filter").value = "";
+  flaggedOnly = false;
   for (const id of ["#shift-note", "#save-note", "#restore-prompt"]) {
     $(id).classList.add("hide");
   }
@@ -690,7 +785,9 @@ function judgeInner(j, extras) {
     .join("");
   const was = j.origRank === null ? "unranked" : j.origRank;
   const name = judgeName(j);
-  return `<span class="jname">${name ? esc(name) : "<i>(unnamed)</i>"}</span>
+  return `<button class="flag" data-flag="${j.i}" aria-pressed="${!!j.flag}"
+      title="${j.flag ? "Unflag" : "Flag to move"} (F)">${j.flag ? "&#9873;" : "&#9872;"}</button>
+    <span class="jname">${name ? esc(name) : "<i>(unnamed)</i>"}</span>
     ${school ? `<span class="jschool">${esc(school)}</span>` : ""}
     ${moved ? `<span class="badge" data-revert="${j.i}" title="Put back">was ${esc(was)} &#8634;</span>` : ""}
     <span class="meta">
@@ -701,7 +798,7 @@ function judgeInner(j, extras) {
 
 function judgeHtml(j, extras) {
   const moved = j.rank !== j.origRank;
-  return `<li class="judge${moved ? " moved" : ""}" data-id="${j.i}" tabindex="0"
+  return `<li class="judge${moved ? " moved" : ""}${j.flag ? " flagged" : ""}" data-id="${j.i}" tabindex="0"
               data-name="${esc(judgeName(j).toLowerCase())}"
               data-school="${esc(schoolOf(j).toLowerCase())}">${judgeInner(j, extras)}</li>`;
 }
@@ -709,6 +806,7 @@ function judgeHtml(j, extras) {
 /** Repaint one already-placed row in situ, leaving its <li> element alive. */
 function patchRow(li, j, extras) {
   li.classList.toggle("moved", j.rank !== j.origRank);
+  li.classList.toggle("flagged", !!j.flag);
   li.innerHTML = judgeInner(j, extras || extraCols());
 }
 
@@ -730,6 +828,14 @@ function updateCounts() {
   $("#counts").innerHTML = `${S.judges.length} judges &middot; ` +
     (moved ? `<b>${moved} moved</b>` : "none moved");
   $("#revert-all").disabled = moved === 0;
+
+  const flagged = flaggedCount();
+  const fb = $("#flagged-only");
+  if (!flagged && flaggedOnly) { flaggedOnly = false; applyFilter(); setDragEnabled(); }
+  fb.innerHTML = `&#9873; ${flagged ? flagged + " flagged" : "Flagged"}`;
+  fb.disabled = flagged === 0;
+  fb.setAttribute("aria-pressed", String(flaggedOnly));
+  renderDiff();
 }
 
 /** Full rebuild of the board. Only needed when the set of tiers changes. */
@@ -791,7 +897,7 @@ function wireDrag() {
     group: "judges",
     animation: 120,
     easing: "cubic-bezier(.2,.7,.3,1)",
-    disabled: $("#filter").value.trim() !== "",
+    disabled: filterActive(),
     // The gaps between tiers are a 14px lane and stay that size all through a
     // drag (see app.css). This threshold is what makes them aimable: Sortable
     // counts the pointer as inside an empty list when it is within this many
@@ -816,7 +922,7 @@ function wireDrag() {
     // can't be scrolled. A mouse gets no delay.
     delay: 130,
     delayOnTouchOnly: true,
-    filter: ".badge",          // the revert badge is a button, not a grip
+    filter: ".badge, .flag",   // the revert badge and flag are buttons, not grips
     preventOnFilter: false,
     scroll: true,
     scrollSensitivity: 90,
@@ -916,6 +1022,116 @@ $("#revert-all").addEventListener("click", () => {
   render();
 });
 
+/* ---- flags ----
+
+   A flag is a note to self -- "this one needs moving" -- and nothing more. It
+   never touches a rank or the export, so it repaints the row in place rather
+   than rebuilding the board.
+*/
+
+function toggleFlag(j, li) {
+  j.flag = !j.flag;
+  focusedId = j.i;
+  patchRow(li, j);
+  applyFilter();
+  updateCounts();
+  autosave();
+}
+
+for (const sel of ["#board", "#unranked"]) {
+  $(sel).addEventListener("click", e => {
+    const b = e.target.closest("[data-flag]");
+    if (!b) return;
+    toggleFlag(byId(b.dataset.flag), b.closest("li.judge"));
+  });
+}
+
+/* ---- diff ----
+
+   The re-entry checklist, live. Tabroom has no bulk pref import, so this is
+   the list you actually work from: tick each judge off as you retype them.
+*/
+
+let diffOpen = store.get("ui:diffOpen") === true;
+
+function renderDiff() {
+  const rows = diff();
+  const done = rows.filter(r => r.done).length;
+  const tog = $("#diff-toggle");
+  tog.textContent = rows.length ? `Changes (${rows.length})` : "Changes";
+  tog.setAttribute("aria-pressed", String(diffOpen));
+  $("#diff").classList.toggle("hide", !diffOpen);
+  if (!diffOpen) return;
+
+  $("#diff-title").textContent = rows.length
+    ? `Re-enter in Tabroom — ${rows.length} judge${rows.length === 1 ? "" : "s"}` +
+      (done ? `, ${done} done` : "")
+    : "No rank changes. Nothing to re-enter.";
+  $("#diff-copy").disabled = $("#diff-csv").disabled = rows.length === 0;
+  const show = v => (v === "" ? `<i>unranked</i>` : esc(v));
+  $("#diff-list").innerHTML = rows.map(({ j, from, to, done }) => {
+    const school = schoolOf(j);
+    return `<li class="${done ? "done" : ""}${j.flag ? " flagged" : ""}">
+      <input type="checkbox" data-tick="${j.i}"${done ? " checked" : ""}
+             aria-label="Done: ${esc(judgeName(j))}">
+      <button class="link" data-goto="${j.i}" title="Show on the board">${
+        esc(judgeName(j) || "(unnamed)")}</button>
+      ${school ? `<span class="jschool">${esc(school)}</span>` : ""}
+      <span class="diff-ranks mono">${show(from)} &rarr; <b>${show(to)}</b></span>
+    </li>`;
+  }).join("");
+}
+
+$("#diff-toggle").addEventListener("click", () => {
+  diffOpen = !diffOpen;
+  store.set("ui:diffOpen", diffOpen);
+  renderDiff();
+});
+
+$("#diff-list").addEventListener("change", e => {
+  const box = e.target.closest("[data-tick]");
+  if (!box) return;
+  const j = byId(box.dataset.tick);
+  j.ticked = box.checked ? rankCell(j) : null;
+  renderDiff();
+  autosave();
+});
+
+$("#diff-list").addEventListener("click", e => {
+  const b = e.target.closest("[data-goto]");
+  if (!b) return;
+  // The judge may be hidden by the filter; clear it rather than fail to find them.
+  if (filterActive()) { $("#filter").value = ""; flaggedOnly = false; applyFilter(); setDragEnabled(); updateCounts(); }
+  const li = document.querySelector(`li.judge[data-id="${b.dataset.goto}"]`);
+  if (!li) return;
+  focusedId = Number(b.dataset.goto);
+  li.scrollIntoView({ block: "center", behavior: "smooth" });
+  li.focus({ preventScroll: true });
+});
+
+$("#diff-copy").addEventListener("click", async () => {
+  const text = diffText();
+  const btn = $("#diff-copy");
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // No async clipboard (older browser, or a context that withholds it):
+    // fall back to a throwaway selection.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  btn.textContent = "Copied";
+  setTimeout(() => { btn.textContent = "Copy"; }, 1200);
+});
+
+$("#diff-csv").addEventListener("click", () => {
+  download(diffCsv(), S.fileName.replace(/\.csv$/i, "") + "-changes.csv");
+});
+
 /* ---- keyboard ----
 
    The reason this exists at all: 53 judges in a pref sheet and 145 in a roster
@@ -925,7 +1141,14 @@ $("#revert-all").addEventListener("click", () => {
 
 document.addEventListener("keydown", e => {
   const li = e.target.closest ? e.target.closest("li.judge") : null;
-  if (!li || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+  if (!li || e.metaKey || e.ctrlKey) return;
+
+  if ((e.key === "f" || e.key === "F") && !e.altKey) {
+    e.preventDefault();
+    toggleFlag(byId(li.dataset.id), li);
+    return;
+  }
+  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
   e.preventDefault();
 
   const j = byId(li.dataset.id);
@@ -934,29 +1157,47 @@ document.addEventListener("keydown", e => {
   focusedId = j.i;
 
   if (j.rank === null) {
-    // An unranked judge has only one direction to go: into the bottom of the list.
+    // An unranked judge has only one direction to go: into the bottom of the
+    // list. There is nobody to swap with -- trading would unrank someone -- so
+    // a plain arrow joins the bottom tier, as ⌥ does.
     if (!up) return;
     if (e.shiftKey || !ranked.length) noteShift(splitInto(j, ranked.length, "low"));
     else j.rank = ranked[ranked.length - 1].rank;
-    render();
-    return;
-  }
-
-  const mine = ranked.findIndex(t => t.rank === j.rank);
-  if (e.shiftKey) {
+  } else if (e.shiftKey) {
+    const mine = ranked.findIndex(t => t.rank === j.rank);
     noteShift(splitInto(j, up ? mine : mine + 1, up ? "high" : "low"));
-  } else {
+  } else if (e.altKey) {
+    const mine = ranked.findIndex(t => t.rank === j.rank);
     const next = ranked[up ? mine - 1 : mine + 1];
     if (!next) return;                       // already at the end of the list
     j.rank = next.rank;
     noteShift(0);
+  } else {
+    // Swap with whoever is on screen above/below, so a filter never trades
+    // ranks with someone the user can't see.
+    const shown = new Set([...document.querySelectorAll("li.judge:not(.filtered-out)")]
+      .map(el => Number(el.dataset.id)));
+    if (!swapNeighbour(j, up, o => shown.has(o.i))) return;
+    noteShift(0);
   }
   render();
+  const el = document.querySelector(`li.judge[data-id="${j.i}"]`);
+  if (el) el.scrollIntoView({ block: "nearest" });
 });
 
 /* ---- filter ---- */
 
 $("#filter").addEventListener("input", () => { applyFilter(); setDragEnabled(); });
+
+let flaggedOnly = false;
+const filterActive = () => $("#filter").value.trim() !== "" || flaggedOnly;
+
+$("#flagged-only").addEventListener("click", () => {
+  flaggedOnly = !flaggedOnly;
+  applyFilter();
+  setDragEnabled();
+  updateCounts();
+});
 
 /**
  * Flip the existing Sortable instances on or off in place.
@@ -966,37 +1207,43 @@ $("#filter").addEventListener("input", () => { applyFilter(); setDragEnabled(); 
  * typing in the filter box stutter. Sortable can be toggled without that.
  */
 function setDragEnabled() {
-  const off = $("#filter").value.trim() !== "";
+  const off = filterActive();
   for (const s of sortables) s.option("disabled", off);
 }
 
 function applyFilter() {
   const q = $("#filter").value.trim().toLowerCase();
-  $("#filter-note").classList.toggle("hide", q === "");
+  const on = filterActive();
+  $("#filter-note").classList.toggle("hide", !on);
   for (const li of document.querySelectorAll("li.judge")) {
-    const hit = q === "" || li.dataset.name.includes(q) || li.dataset.school.includes(q);
+    const hit = (q === "" || li.dataset.name.includes(q) || li.dataset.school.includes(q)) &&
+                (!flaggedOnly || li.classList.contains("flagged"));
     li.classList.toggle("filtered-out", !hit);
   }
   // Hide tiers with nothing left showing, so a filter doesn't leave a wall of
   // empty tier headers.
   for (const sec of document.querySelectorAll("#board .tier, #unranked .tier")) {
     const any = sec.querySelector("li.judge:not(.filtered-out)");
-    sec.classList.toggle("hide", q !== "" && !any);
+    sec.classList.toggle("hide", on && !any);
   }
-  for (const gap of document.querySelectorAll(".gap")) gap.classList.toggle("hide", q !== "");
+  for (const gap of document.querySelectorAll(".gap")) gap.classList.toggle("hide", on);
 }
 
 /* ---- export / close ---- */
 
-$("#export").addEventListener("click", () => {
-  const blob = new Blob([buildCsv()], { type: "text/csv;charset=utf-8" });
+function download(text, name) {
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = S.fileName.replace(/\.csv$/i, "") + "-edited.csv";
+  a.download = name;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+$("#export").addEventListener("click", () => {
+  download(buildCsv(), S.fileName.replace(/\.csv$/i, "") + "-edited.csv");
 });
 
 $("#restart").addEventListener("click", () => {
@@ -1023,9 +1270,10 @@ function autosave() {
     if (!$("#restore-prompt").classList.contains("hide")) return;
     const ok = store.set(sheetKey(S.fileName), {
       fileName: S.fileName, header: S.header, width: S.width, lens: S.lens, map: S.map,
-      moved: movedCount(), savedAt: Date.now(),
+      moved: movedCount(), flagged: flaggedCount(), savedAt: Date.now(),
       judges: S.judges.map(j => ({
         fields: j.fields, origRaw: j.origRaw, origRank: j.origRank, rank: j.rank,
+        flag: j.flag, ticked: j.ticked,
       })),
     });
     if (!ok) {
