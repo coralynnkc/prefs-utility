@@ -304,4 +304,4 @@ body.dragging li.judge.moved:not(.drag-fallback):hover { background: var(--moved
 body.dragging { cursor: grabbing; user-select: none; }
 
 #unranked { margin-top: 1.4rem; }
-.filtered-out { display: none; }
+li.judge.filtered-out { display: none; }
